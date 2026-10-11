@@ -165,4 +165,47 @@ if st.button("Generate Resource Grid", type="primary"):
                 word = item.get('word')
                 active_cols = [("Key Word", True)]
                 if inc_def: active_cols.append(("Definition", True))
-                if inc
+                if inc_sentence: active_cols.append(("Example Sentence", True))
+                if inc_related: active_cols.append(("Related Words", True))
+                if inc_dual_coding: active_cols.append(("Image", True))
+                
+                grid = st.columns(len(active_cols))
+                col_idx = 0
+
+                with grid[col_idx]:
+                    st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
+                col_idx += 1
+
+                if inc_def:
+                    with grid[col_idx]:
+                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                    col_idx += 1
+
+                if inc_sentence:
+                    with grid[col_idx]:
+                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                    col_idx += 1
+
+                if inc_related:
+                    with grid[col_idx]:
+                        rel_list = item.get('related_words', [])
+                        rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
+                        st.markdown(f"**Related Words**\n\n{rel_str}")
+                    col_idx += 1
+
+                if inc_dual_coding:
+                    with grid[col_idx]:
+                        st.markdown("**Image**")
+                        img, err_msg = image_dict.get(word, (None, None))
+                        if img:
+                            st.image(img, use_container_width=True)
+                        elif err_msg:
+                            st.caption(f"🖼️ *(Image error: {err_msg[:60]}...)*")
+                        else:
+                            st.caption("🖼️ *(Visual unavailable)*")
+                    col_idx += 1
+
+                st.divider()
+
+        except Exception as e:
+            st.error(f"Error generating resource: {e}")
