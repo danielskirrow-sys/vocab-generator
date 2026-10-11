@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import requests
 import io
+from PIL import Image as PILImage
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
@@ -47,21 +48,28 @@ def extract_vocab_cached(text, target_year, word_count):
 
     raise Exception(f"API Failed: {last_err}")
 
-# --- 2. FAST UNWATERMARKED PNG ICON FETCHING ---
+# --- 2. SAFE ICON FETCH WITH PILLOW VALIDATION ---
 @st.cache_data(show_spinner=False)
 def get_icon_image_bytes(icon_name):
     clean_icon = str(icon_name).lower().strip().replace(" ", "-")
-    url = f"https://api.iconify.design/material-symbols:{clean_icon}.png?color=%23333333&width=128&height=128"
-    try:
-        res = requests.get(url, timeout=4)
-        if res.status_code == 200 and len(res.content) > 100:
-            return res.content
-    except Exception:
-        pass
+    urls_to_try = [
+        f"https://api.iconify.design/material-symbols:{clean_icon}.png?color=%23333333&width=128&height=128",
+        "https://api.iconify.design/material-symbols:menu-book.png?color=%23333333&width=128&height=128"
+    ]
     
-    fallback_url = "https://api.iconify.design/material-symbols:menu-book.png?color=%23333333&width=128&height=128"
-    res = requests.get(fallback_url, timeout=4)
-    return res.content
+    for url in urls_to_try:
+        try:
+            res = requests.get(url, timeout=3)
+            if res.status_code == 200:
+                img_data = res.content
+                # Verify that the returned bytes are actually a valid image
+                img_check = PILImage.open(io.BytesIO(img_data))
+                img_check.verify()
+                return img_data
+        except Exception:
+            continue
+            
+    return None
 
 # --- 3. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
@@ -80,6 +88,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=10)
     cell_style = ParagraphStyle('GridCell', parent=styles['Normal'], fontSize=9, leading=12)
     header_style = ParagraphStyle('GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold")
+    box_style = ParagraphStyle('SketchBox', parent=styles['Normal'], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#777777"))
 
     elements.append(Paragraph("Learning New Vocabulary", title_style))
     elements.append(Spacer(1, 10))
@@ -112,8 +121,11 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
         if inc_icon:
             icon_name = item.get('icon_name', 'menu-book')
             img_bytes = get_icon_image_bytes(icon_name)
-            img_obj = RLImage(io.BytesIO(img_bytes), width=32, height=32)
-            row.append(img_obj)
+            if img_bytes:
+                img_obj = RLImage(io.BytesIO(img_bytes), width=32, height=32)
+                row.append(img_obj)
+            else:
+                row.append(Paragraph("<br/>[ Visual Anchor ]<br/>", box_style))
                 
         table_data.append(row)
 
@@ -212,7 +224,10 @@ if st.button("Generate Resource Grid", type="primary"):
                 if inc_icon:
                     with grid[c_idx]:
                         st.markdown("**Visual Anchor**")
-                        st.image(img_bytes, width=48)
+                        if img_bytes:
+                            st.image(img_bytes, width=48)
+                        else:
+                            st.caption("✏️ *[ Visual Space ]*")
                     c_idx += 1
 
                 st.divider()
