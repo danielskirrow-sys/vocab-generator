@@ -15,7 +15,13 @@ api_key = st.secrets.get("GEMINI_API_KEY", "")
 # --- 1. CACHED TEXT ANALYSIS WITH ICON MAPPING ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
-    prompt = f"Analyze passage for {target_year} UK secondary students: '{text}'. Extract up to {word_count} Tier 2 words. Return JSON array with keys: word, word_class, definition, sentence, related_words, icon_name (lowercase single word Google Material symbol name e.g. gavel, search, bolt, balance, menu-book, shield, flag, person)."
+    prompt = (
+        f"Analyze passage for {target_year} UK secondary students: '{text}'. "
+        f"Extract up to {word_count} Tier 2 words. Return JSON array with keys: "
+        "word, word_class, definition, sentence, related_words, icon_name "
+        "(lowercase single word Google Material symbol name e.g. gavel, search, "
+        "bolt, balance, menu-book, shield, flag, person)."
+    )
     
     models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
@@ -60,7 +66,14 @@ def get_icon_image_bytes(icon_name):
 # --- 3. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=landscape(A4), 
+        rightMargin=30, 
+        leftMargin=30, 
+        topMargin=30, 
+        bottomMargin=30
+    )
     elements = []
     
     styles = getSampleStyleSheet()
@@ -72,10 +85,14 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     elements.append(Spacer(1, 10))
 
     headers = [Paragraph("Key Word", header_style)]
-    if inc_def: headers.append(Paragraph("Definition", header_style))
-    if inc_sentence: headers.append(Paragraph("Example Sentence", header_style))
-    if inc_related: headers.append(Paragraph("Related Words", header_style))
-    if inc_icon: headers.append(Paragraph("Visual Anchor", header_style))
+    if inc_def: 
+        headers.append(Paragraph("Definition", header_style))
+    if inc_sentence: 
+        headers.append(Paragraph("Example Sentence", header_style))
+    if inc_related: 
+        headers.append(Paragraph("Related Words", header_style))
+    if inc_icon: 
+        headers.append(Paragraph("Visual Anchor", header_style))
 
     table_data = [headers]
 
@@ -89,9 +106,9 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
         if inc_sentence:
             row.append(Paragraph(f"<i>{item.get('sentence', 'N/A')}</i>", cell_style))
         if inc_related:
-            rel_list = item.get('related_words', [])
-            rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else str(rel_list)
-            row.append(Paragraph(rel_str, cell_style))
+            r_val = item.get('related_words', [])
+            r_str = ", ".join(r_val) if isinstance(r_val, list) else str(r_val)
+            row.append(Paragraph(r_str, cell_style))
         if inc_icon:
             icon_name = item.get('icon_name', 'menu-book')
             img_bytes = get_icon_image_bytes(icon_name)
@@ -159,10 +176,14 @@ if st.button("Generate Resource Grid", type="primary"):
                 img_bytes = get_icon_image_bytes(icon_name)
 
                 active_cols = [("Key Word", True)]
-                if inc_def: active_cols.append(("Definition", True))
-                if inc_sentence: active_cols.append(("Example Sentence", True))
-                if inc_related: active_cols.append(("Related Words", True))
-                if inc_icon: active_cols.append(("Visual Icon", True))
+                if inc_def: 
+                    active_cols.append(("Definition", True))
+                if inc_sentence: 
+                    active_cols.append(("Example Sentence", True))
+                if inc_related: 
+                    active_cols.append(("Related Words", True))
+                if inc_icon: 
+                    active_cols.append(("Visual Icon", True))
                 
                 grid = st.columns(len(active_cols))
                 c_idx = 0
@@ -183,5 +204,18 @@ if st.button("Generate Resource Grid", type="primary"):
 
                 if inc_related:
                     with grid[c_idx]:
-                        rel_list = item.get('related_words', [])
-                        rel_str =
+                        rel_val = item.get('related_words', [])
+                        rel_out = ", ".join(rel_val) if isinstance(rel_val, list) else str(rel_val)
+                        st.markdown(f"**Related Words**\n\n{rel_out}")
+                    c_idx += 1
+
+                if inc_icon:
+                    with grid[c_idx]:
+                        st.markdown("**Visual Anchor**")
+                        st.image(img_bytes, width=48)
+                    c_idx += 1
+
+                st.divider()
+
+        except Exception as e:
+            st.error(f"Error generating resource: {e}")
