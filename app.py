@@ -7,7 +7,6 @@ from PIL import Image
 import io
 import concurrent.futures
 
-# PDF Generation Imports (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -16,32 +15,26 @@ from reportlab.lib import colors
 from google import genai
 from google.genai import types
 
-# Page Configuration
-st.set_page_config(
-    page_title="Vocabulary Support Generator", 
-    page_icon="📚", 
-    layout="wide"
-)
+# Configuration
+st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", layout="wide")
 
-# Connect securely to Gemini API via Streamlit Secrets
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# --- HELPER FUNCTION 1: Fetch Dual Coding Visual via Pollinations.ai ---
+# 1. Image Fetcher (Pollinations.ai)
 def fetch_single_image(word, prompt_text):
     try:
-        raw_prompt = f"simple black and white vector line art icon for educational dual coding representing {word}, {prompt_text}"
+        raw_prompt = f"simple black white line art icon for {word}, {prompt_text}"
         encoded_prompt = urllib.parse.quote(raw_prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=300&height=300&nologo=true&seed=42"
-        
-        response = requests.get(url, timeout=12)
-        if response.status_code == 200:
-            return Image.open(io.BytesIO(response.content)), None
-        return None, f"HTTP {response.status_code}"
+        res = requests.get(url, timeout=12)
+        if res.status_code == 200:
+            return Image.open(io.BytesIO(res.content)), None
+        return None, f"HTTP {res.status_code}"
     except Exception as e:
         return None, str(e)
 
-# --- HELPER FUNCTION 2: Generate Landscape A4 PDF ---
+# 2. PDF Generator
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -104,8 +97,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
     buffer.seek(0)
     return buffer
 
-
-# --- MAIN UI INTERFACE ---
+# 3. Main Interface
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -124,4 +116,53 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Analysing text and processing vocabulary...
+        status = st.empty()
+        status.info("Analysing text and processing vocabulary...")
+        
+        prompt = f"Analyze the following text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words. Use British English spelling. Passage: '{user_text}'. Return a JSON array with fields: word, word_class, definition, sentence, related_words, image_prompt."
+
+        try:
+            text_response = client.models.generate_content(
+                model='gemini-3.8-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            
+            vocab_data = json.loads(text_response.text)
+            
+            image_dict = {}
+            if inc_dual_coding:
+                status.info("Generating dual coding visuals...")
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future_to_word = {
+                        executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', '')): item.get('word') 
+                        for item in vocab_data
+                    }
+                    for future in concurrent.futures.as_completed(future_to_word):
+                        word = future_to_word[future]
+                        try:
+                            image_dict[word] = future.result()
+                        except Exception as err:
+                            image_dict[word] = (None, str(err))
+
+            status.empty()
+            st.markdown("---")
+            
+            col_title, col_btn = st.columns([3, 1])
+            with col_title:
+                st.subheader(" Learning New Vocabulary")
+            with col_btn:
+                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict)
+                st.download_button(
+                    label="📥 Download Printable PDF",
+                    data=pdf_buffer,
+                    file_name="Vocabulary_Worksheet.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+
+            for item in vocab_data:
+                word = item.get('word')
+                active_cols = [("Key Word", True)]
+                if inc_def: active_cols.append(("Definition", True))
+                if inc
