@@ -1,7 +1,6 @@
 import streamlit as st
 import json
 import pandas as pd
-import requests
 from PIL import Image
 import io
 import concurrent.futures
@@ -26,29 +25,25 @@ st.set_page_config(
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# --- HELPER FUNCTION 1: Direct Imagen API Request ---
-def fetch_single_image(word, prompt_text, key):
+# --- HELPER FUNCTION 1: Fetch Single Image Safely ---
+def fetch_single_image(word, prompt_text):
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "instances": [
-                {"prompt": f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"}
-            ],
-            "parameters": {
-                "sampleCount": 1,
-                "aspectRatio": "1:1"
-            }
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
-        if res.status_code == 200:
-            data = res.json()
-            import base64
-            img_b64 = data["predictions"][0]["bytesBase64Encoded"]
-            img_bytes = base64.b64decode(img_b64)
-            return Image.open(io.BytesIO(img_bytes)), None
-        else:
-            return None, f"HTTP {res.status_code}: {res.text[:80]}"
+        img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
+        
+        img_response = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=img_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="1:1"
+            )
+        )
+        
+        if img_response and img_response.generated_images:
+            for generated_image in img_response.generated_images:
+                return Image.open(io.BytesIO(generated_image.image.image_bytes)), None
+                
+        return None, "No image generated"
     except Exception as e:
         return None, str(e)
 
@@ -168,7 +163,7 @@ if st.button("Generate Resource Grid", type="primary"):
                     with st.spinner("Generating dual coding visuals in parallel..."):
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             future_to_word = {
-                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', ''), api_key): item.get('word') 
+                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', '')): item.get('word') 
                                 for item in vocab_data
                             }
                             for future in concurrent.futures.as_completed(future_to_word):
