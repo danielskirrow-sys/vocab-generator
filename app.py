@@ -1,8 +1,7 @@
 import streamlit as st
 import json
 import pandas as pd
-from google import genai
-from google.genai import types
+import requests
 from PIL import Image
 import io
 import concurrent.futures
@@ -12,6 +11,9 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+
+from google import genai
+from google.genai import types
 
 # Page Configuration
 st.set_page_config(
@@ -24,25 +26,29 @@ st.set_page_config(
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# --- HELPER FUNCTION 1: Fetch Single Image Safely ---
-def fetch_single_image(word, prompt_text):
+# --- HELPER FUNCTION 1: Direct Imagen API Request ---
+def fetch_single_image(word, prompt_text, key):
     try:
-        img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
-        
-        # Call Imagen model directly
-        img_response = client.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=img_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="1:1",
-                output_mime_type="image/png"
-            )
-        )
-        if img_response.generated_images:
-            for generated_image in img_response.generated_images:
-                return Image.open(io.BytesIO(generated_image.image.image_bytes)), None
-        return None, "No image returned by API"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "instances": [
+                {"prompt": f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"}
+            ],
+            "parameters": {
+                "sampleCount": 1,
+                "aspectRatio": "1:1"
+            }
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        if res.status_code == 200:
+            data = res.json()
+            import base64
+            img_b64 = data["predictions"][0]["bytesBase64Encoded"]
+            img_bytes = base64.b64decode(img_b64)
+            return Image.open(io.BytesIO(img_bytes)), None
+        else:
+            return None, f"HTTP {res.status_code}: {res.text[:80]}"
     except Exception as e:
         return None, str(e)
 
@@ -57,11 +63,9 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
     cell_style = ParagraphStyle('GridCell', parent=styles['Normal'], fontSize=9, leading=12)
     header_style = ParagraphStyle('GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold")
 
-    # Header Title
     elements.append(Paragraph("Learning New Vocabulary", title_style))
     elements.append(Spacer(1, 10))
 
-    # Define Column Headers
     headers = [Paragraph("Key Word", header_style)]
     if inc_def: headers.append(Paragraph("Definition", header_style))
     if inc_sentence: headers.append(Paragraph("Example Sentence", header_style))
@@ -70,7 +74,6 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
 
     table_data = [headers]
 
-    # Populate Data Rows
     for item in vocab_data:
         word = item.get('word', '')
         row = [Paragraph(f"<b>{word}</b><br/><i>({item.get('word_class', '')})</i>", cell_style)]
@@ -112,11 +115,9 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
     buffer.seek(0)
     return buffer
 
-
 # --- MAIN UI INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
-# Sidebar Controls
 st.sidebar.header("1. Target Options")
 word_count = st.sidebar.slider("Number of words to extract", min_value=1, max_value=8, value=5)
 target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"])
@@ -127,7 +128,6 @@ inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
 inc_dual_coding = st.sidebar.checkbox("Dual Coding (Generated Image)", value=True)
 
-# User Text Input
 user_text = st.text_area("Paste Text Below", height=200)
 
 if st.button("Generate Resource Grid", type="primary"):
@@ -135,8 +135,6 @@ if st.button("Generate Resource Grid", type="primary"):
         st.warning("Please paste a text passage before generating.")
     else:
         with st.spinner("Analysing text and processing vocabulary..."):
-            
-            # API Prompt Construction
             prompt = f"""
             Analyze the following text meant for {target_year} secondary school students in the UK. 
             Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
@@ -155,7 +153,6 @@ if st.button("Generate Resource Grid", type="primary"):
             """
 
             try:
-                # Text Generation Call
                 text_response = client.models.generate_content(
                     model='gemini-3.8-flash',
                     contents=prompt,
@@ -166,13 +163,12 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 vocab_data = json.loads(text_response.text)
                 
-                # Fetch images in parallel
                 image_dict = {}
                 if inc_dual_coding:
                     with st.spinner("Generating dual coding visuals in parallel..."):
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             future_to_word = {
-                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', '')): item.get('word') 
+                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', ''), api_key): item.get('word') 
                                 for item in vocab_data
                             }
                             for future in concurrent.futures.as_completed(future_to_word):
@@ -184,7 +180,6 @@ if st.button("Generate Resource Grid", type="primary"):
 
                 st.markdown("---")
                 
-                # Top Action Bar with Download Button
                 col_title, col_btn = st.columns([3, 1])
                 with col_title:
                     st.subheader(" Learning New Vocabulary")
@@ -198,7 +193,6 @@ if st.button("Generate Resource Grid", type="primary"):
                         type="primary"
                     )
 
-                # Display On-Screen Grid Preview
                 for item in vocab_data:
                     word = item.get('word')
                     active_cols = [("Key Word", True)]
@@ -210,24 +204,20 @@ if st.button("Generate Resource Grid", type="primary"):
                     grid = st.columns(len(active_cols))
                     col_idx = 0
 
-                    # 1. Key Word
                     with grid[col_idx]:
                         st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
                     col_idx += 1
 
-                    # 2. Definition
                     if inc_def:
                         with grid[col_idx]:
                             st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
                         col_idx += 1
 
-                    # 3. Example Sentence
                     if inc_sentence:
                         with grid[col_idx]:
                             st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
                         col_idx += 1
 
-                    # 4. Related Words
                     if inc_related:
                         with grid[col_idx]:
                             rel_list = item.get('related_words', [])
@@ -235,7 +225,6 @@ if st.button("Generate Resource Grid", type="primary"):
                             st.markdown(f"**Related Words**\n\n{rel_str}")
                         col_idx += 1
 
-                    # 5. Image
                     if inc_dual_coding:
                         with grid[col_idx]:
                             st.markdown("**Image**")
