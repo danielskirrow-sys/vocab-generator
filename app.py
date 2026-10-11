@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import requests
 import io
 
 # ReportLab Imports for PDF Generation
@@ -8,21 +9,16 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-from google import genai
-from google.genai import types
-
-# Page Setup
+# Page Configuration
 st.set_page_config(
     page_title="Vocabulary Support Generator", 
     page_icon="📚", 
     layout="wide"
 )
 
-# Initialize Gemini Client
 api_key = st.secrets["GEMINI_API_KEY"]
-client = genai.Client(api_key=api_key)
 
-# --- 1. TEXT GENERATION FUNCTION ---
+# --- 1. DIRECT REST API CALL (Fast & Anti-Stall) ---
 def extract_vocab(text, target_year, word_count):
     prompt = f"""
     Analyze the following text meant for {target_year} secondary school students in the UK. 
@@ -40,15 +36,25 @@ def extract_vocab(text, target_year, word_count):
     - related_words: Array of related forms or morphology
     """
 
-    response = client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.1
-        ),
-    )
-    return json.loads(response.text)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.1
+        }
+    }
+
+    # Hard 8-second timeout prevents indefinite hanging
+    response = requests.post(url, headers=headers, json=payload, timeout=8)
+    
+    if response.status_code == 200:
+        res_data = response.json()
+        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(raw_text)
+    else:
+        raise Exception(f"API Error {response.status_code}: {response.text[:100]}")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
