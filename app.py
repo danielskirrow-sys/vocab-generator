@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 import io
+import concurrent.futures
 
 # Page Configuration
 st.set_page_config(
@@ -31,6 +32,23 @@ inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
 inc_dual_coding = st.sidebar.checkbox("Dual Coding (Generated Image)", value=True)
 
+# Helper function to generate an individual image safely
+def fetch_single_image(word, prompt_text):
+    try:
+        img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
+        img_response = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=img_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="1:1"
+            )
+        )
+        for generated_image in img_response.generated_images:
+            return Image.open(io.BytesIO(generated_image.image.image_bytes))
+    except Exception:
+        return None
+
 # --- MAIN INTERFACE ---
 user_text = st.text_area("Paste Text Below", height=200)
 
@@ -38,7 +56,7 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Analysing text, processing vocabulary, and generating images..."):
+        with st.spinner("Analysing text and processing vocabulary..."):
             
             # Construct API Prompt
             prompt = f"""
@@ -59,7 +77,7 @@ if st.button("Generate Resource Grid", type="primary"):
             """
 
             try:
-                # Text Generation API Call using updated gemini-3.8-flash model
+                # Text Generation API Call
                 text_response = client.models.generate_content(
                     model='gemini-3.8-flash',
                     contents=prompt,
@@ -70,11 +88,28 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 vocab_data = json.loads(text_response.text)
                 
+                # Fetch all images in PARALLEL if Dual Coding is enabled
+                image_dict = {}
+                if inc_dual_coding:
+                    with st.spinner("Generating dual coding visuals in parallel..."):
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future_to_word = {
+                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', '')): item.get('word') 
+                                for item in vocab_data
+                            }
+                            for future in concurrent.futures.as_completed(future_to_word):
+                                word = future_to_word[future]
+                                try:
+                                    image_dict[word] = future.result()
+                                except Exception:
+                                    image_dict[word] = None
+
                 st.markdown("---")
                 st.subheader(" Learning New Vocabulary")
 
-                # Process each extracted word row
+                # Render grid results instantly
                 for item in vocab_data:
+                    word = item.get('word')
                     active_cols = [("Key Word", True)]
                     if inc_def: active_cols.append(("Definition", True))
                     if inc_sentence: active_cols.append(("Example Sentence", True))
@@ -86,7 +121,7 @@ if st.button("Generate Resource Grid", type="primary"):
 
                     # 1. Key Word
                     with grid[col_idx]:
-                        st.markdown(f"**Key Word**\n\n### {item.get('word')}\n*({item.get('word_class')})*")
+                        st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
                     col_idx += 1
 
                     # 2. Definition
@@ -113,21 +148,11 @@ if st.button("Generate Resource Grid", type="primary"):
                     if inc_dual_coding:
                         with grid[col_idx]:
                             st.markdown("**Image**")
-                            with st.spinner("Drawing image..."):
-                                img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{item.get('word')}': {item.get('image_prompt', '')}"
-                                
-                                img_response = client.models.generate_images(
-                                    model='imagen-3.0-generate-002',
-                                    prompt=img_prompt,
-                                    config=types.GenerateImagesConfig(
-                                        number_of_images=1,
-                                        aspect_ratio="1:1"
-                                    )
-                                )
-                                
-                                for generated_image in img_response.generated_images:
-                                    image = Image.open(io.BytesIO(generated_image.image.image_bytes))
-                                    st.image(image, use_container_width=True)
+                            img = image_dict.get(word)
+                            if img:
+                                st.image(img, use_container_width=True)
+                            else:
+                                st.caption("🖼️ *(Visual unavailable)*")
                         col_idx += 1
 
                     st.divider()
