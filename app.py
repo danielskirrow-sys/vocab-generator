@@ -58,9 +58,9 @@ if st.button("Generate Resource Grid", type="primary"):
             """
 
             try:
-                # Text Generation API Call
+                # Text Generation API Call using updated gemini-3.8-flash model
                 text_response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.8-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
