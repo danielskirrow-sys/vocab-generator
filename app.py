@@ -29,7 +29,7 @@ def analyze_vocabulary(text, target_year, word_count):
     Return a JSON array with fields: word, word_class, definition, sentence, related_words.
     """
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-3.8-flash',
         contents=prompt,
         config=types.GenerateContentConfig(response_mime_type="application/json")
     )
