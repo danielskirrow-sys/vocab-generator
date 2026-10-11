@@ -1,20 +1,3 @@
-That "image unavailable" message happens because the Image API call is hitting a slight roadblock behind the scenes—most commonly due to one of two reasons:
-
-Model Endpoint: Google frequently updates model identifiers (e.g., standardizing between Imagen endpoints).
-
-Exception Handling Catch: In our previous script, if an image call encountered any minor warning (like a rate limit or slight prompt adjustment), the code caught the error silently and printed (Visual unavailable).
-
-The Fix: Direct Image Endpoint & Direct Error Visibility
-We can fix this by:
-
-Updating the image generation call to use Google's universal image generation interface.
-
-Printing the exact error message in the app interface if an image fails so you can see precisely why Google flagged or delayed it.
-
-Updated app.py Code
-Replace your entire app.py on GitHub with this revised version:
-
-Python
 import streamlit as st
 import json
 import pandas as pd
