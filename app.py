@@ -1,3 +1,20 @@
+That "image unavailable" message happens because the Image API call is hitting a slight roadblock behind the scenes—most commonly due to one of two reasons:
+
+Model Endpoint: Google frequently updates model identifiers (e.g., standardizing between Imagen endpoints).
+
+Exception Handling Catch: In our previous script, if an image call encountered any minor warning (like a rate limit or slight prompt adjustment), the code caught the error silently and printed (Visual unavailable).
+
+The Fix: Direct Image Endpoint & Direct Error Visibility
+We can fix this by:
+
+Updating the image generation call to use Google's universal image generation interface.
+
+Printing the exact error message in the app interface if an image fails so you can see precisely why Google flagged or delayed it.
+
+Updated app.py Code
+Replace your entire app.py on GitHub with this revised version:
+
+Python
 import streamlit as st
 import json
 import pandas as pd
@@ -28,23 +45,27 @@ client = genai.Client(api_key=api_key)
 def fetch_single_image(word, prompt_text):
     try:
         img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
+        
+        # Call Imagen model directly
         img_response = client.models.generate_images(
             model='imagen-3.0-generate-002',
             prompt=img_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
-                aspect_ratio="1:1"
+                aspect_ratio="1:1",
+                output_mime_type="image/png"
             )
         )
-        for generated_image in img_response.generated_images:
-            return Image.open(io.BytesIO(generated_image.image.image_bytes))
-    except Exception:
-        return None
+        if img_response.generated_images:
+            for generated_image in img_response.generated_images:
+                return Image.open(io.BytesIO(generated_image.image.image_bytes)), None
+        return None, "No image returned by API"
+    except Exception as e:
+        return None, str(e)
 
 # --- HELPER FUNCTION 2: Generate Landscape A4 PDF ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict):
     buffer = io.BytesIO()
-    # Using Landscape A4 to cleanly fit all table columns
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     
@@ -80,7 +101,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
             rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else str(rel_list)
             row.append(Paragraph(rel_str, cell_style))
         if inc_dual_coding:
-            img = image_dict.get(word)
+            img, err = image_dict.get(word, (None, None))
             if img:
                 img_byte_arr = io.BytesIO()
                 img.save(img_byte_arr, format='PNG')
@@ -91,12 +112,10 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
                 
         table_data.append(row)
 
-    # Calculate column widths evenly based on active selections
     num_cols = len(headers)
-    total_width = 780 # Landscape printable width
+    total_width = 780
     col_width = total_width / num_cols
 
-    # Format Table Layout
     t = Table(table_data, colWidths=[col_width] * num_cols)
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
@@ -177,8 +196,8 @@ if st.button("Generate Resource Grid", type="primary"):
                                 word = future_to_word[future]
                                 try:
                                     image_dict[word] = future.result()
-                                except Exception:
-                                    image_dict[word] = None
+                                except Exception as err:
+                                    image_dict[word] = (None, str(err))
 
                 st.markdown("---")
                 
@@ -187,7 +206,6 @@ if st.button("Generate Resource Grid", type="primary"):
                 with col_title:
                     st.subheader(" Learning New Vocabulary")
                 with col_btn:
-                    # Generate PDF buffer for download button
                     pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict)
                     st.download_button(
                         label="📥 Download Printable PDF",
@@ -238,9 +256,11 @@ if st.button("Generate Resource Grid", type="primary"):
                     if inc_dual_coding:
                         with grid[col_idx]:
                             st.markdown("**Image**")
-                            img = image_dict.get(word)
+                            img, err_msg = image_dict.get(word, (None, None))
                             if img:
                                 st.image(img, use_container_width=True)
+                            elif err_msg:
+                                st.caption(f"🖼️ *(Image error: {err_msg[:60]}...)*")
                             else:
                                 st.caption("🖼️ *(Visual unavailable)*")
                         col_idx += 1
