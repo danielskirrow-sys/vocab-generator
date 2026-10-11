@@ -38,12 +38,13 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Analyzing text, processing vocabulary, and generating images..."):
+        with st.spinner("Analysing text, processing vocabulary, and generating images..."):
             
             # Construct API Prompt
             prompt = f"""
-            Analyze the following text meant for {target_year} secondary school students. 
+            Analyze the following text meant for {target_year} secondary school students in the UK. 
             Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
+            Use British English spelling in all definitions and example sentences.
             
             Passage:
             "{user_text}"
