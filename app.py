@@ -46,7 +46,6 @@ def extract_vocab_cached(text, target_year, word_count):
     - related_words: Array of related forms or morphology
     """
 
-    # Active, supported 2026 model endpoints
     models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -72,7 +71,7 @@ def extract_vocab_cached(text, target_year, word_count):
                     time.sleep(1.5)
                 else:
                     last_err = f"HTTP {res.status_code} ({model}): {res.text[:120]}"
-                    break  # Try next model on failure
+                    break
             except requests.exceptions.Timeout:
                 last_err = f"Timeout connecting to {model}"
             except Exception as e:
@@ -184,4 +183,44 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 api_elapsed = round(time.time() - start_time, 2)
                 log_event(f"Success! Model '{used_model}' responded in {api_elapsed}s.")
-                log_event(f"Extracted {len(
+                count_str = str(len(vocab_data))
+                log_event(f"Extracted {count_str} target words.")
+                update_log_ui()
+                
+                log_event("Rendering Landscape A4 PDF Document...")
+                update_log_ui()
+                
+                pdf_start = time.time()
+                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
+                pdf_elapsed = round(time.time() - pdf_start, 2)
+                
+                log_event(f"PDF built successfully in {pdf_elapsed}s.")
+                log_event("Displaying interactive resource grid...")
+                update_log_ui()
+
+                st.markdown("---")
+                
+                col_title, col_btn = st.columns([3, 1])
+                with col_title:
+                    st.subheader(" Learning New Vocabulary")
+                with col_btn:
+                    st.download_button(
+                        label="📥 Download Printable PDF",
+                        data=pdf_buffer,
+                        file_name="Vocabulary_Worksheet.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+
+                for item in vocab_data:
+                    word = item.get('word')
+                    active_cols = [("Key Word", True)]
+                    if inc_def: active_cols.append(("Definition", True))
+                    if inc_sentence: active_cols.append(("Example Sentence", True))
+                    if inc_related: active_cols.append(("Related Words", True))
+                    
+                    grid = st.columns(len(active_cols))
+                    col_idx = 0
+
+                    with grid[col_idx]:
+                        st
