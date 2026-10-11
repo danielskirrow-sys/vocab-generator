@@ -4,92 +4,54 @@ import requests
 import io
 import time
 
-# ReportLab Imports for PDF Generation
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Page Configuration
-st.set_page_config(
-    page_title="Vocabulary Support Generator", 
-    page_icon="📚", 
-    layout="wide"
-)
+st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", layout="wide")
 
-# Initialize Session State for Logs
 if "logs" not in st.session_state:
     st.session_state.logs = []
 
-def log_event(message):
-    timestamp = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {message}")
+def log_event(msg):
+    ts = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{ts}] {msg}")
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. CACHED DIRECT REST API CALL ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
-    prompt = f"""
-    Analyze the following text meant for {target_year} secondary school students in the UK. 
-    Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
-    Use British English spelling in all definitions and example sentences.
+    prompt = f"Analyze the text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words for explicit instruction. Use British English spelling. Passage: '{text}'. Return JSON array with fields: word, word_class, definition, sentence, related_words."
     
-    Passage:
-    "{text}"
-    
-    Return a JSON array where each object strictly contains the following fields:
-    - word: Target word
-    - word_class: Word class (e.g. Noun, Verb, Adjective)
-    - definition: Student-friendly definition suitable for {target_year}
-    - sentence: Example sentence showing practical classroom usage
-    - related_words: Array of related forms or morphology
-    """
-
-    models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+    models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "response_mime_type": "application/json",
-            "temperature": 0.1
-        }
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
     }
 
     last_err = ""
-    for model in models_to_try:
+    for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        for attempt in range(2):
-            try:
-                res = requests.post(url, headers=headers, json=payload, timeout=10)
-                if res.status_code == 200:
-                    res_data = res.json()
-                    raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                    return json.loads(raw_text), model
-                elif res.status_code == 429:
-                    last_err = f"429 Quota Exhausted on {model}"
-                    time.sleep(1.5)
-                else:
-                    last_err = f"HTTP {res.status_code} ({model}): {res.text[:120]}"
-                    break
-            except requests.exceptions.Timeout:
-                last_err = f"Timeout connecting to {model}"
-            except Exception as e:
-                last_err = str(e)
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=8)
+            if res.status_code == 200:
+                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                return json.loads(raw_text), model
+            elif res.status_code == 429:
+                last_err = f"429 Quota limit on {model}"
+                time.sleep(1)
+            else:
+                last_err = f"HTTP {res.status_code} on {model}"
+        except Exception as e:
+            last_err = str(e)
 
-    raise Exception(f"API Request Failed. Details: {last_err}")
+    raise Exception(f"API Failed: {last_err}")
 
-# --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, 
-        pagesize=landscape(A4), 
-        rightMargin=30, 
-        leftMargin=30, 
-        topMargin=30, 
-        bottomMargin=30
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     
     styles = getSampleStyleSheet()
@@ -110,7 +72,6 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     for item in vocab_data:
         word = item.get('word', '')
         row = [Paragraph(f"<b>{word}</b><br/><i>({item.get('word_class', '')})</i>", cell_style)]
-        
         if inc_def:
             row.append(Paragraph(item.get('definition', 'N/A'), cell_style))
         if inc_sentence:
@@ -119,12 +80,10 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
             rel_list = item.get('related_words', [])
             rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else str(rel_list)
             row.append(Paragraph(rel_str, cell_style))
-                
         table_data.append(row)
 
     num_cols = len(headers)
-    total_width = 780
-    col_width = total_width / num_cols
+    col_width = 780 / num_cols
 
     t = Table(table_data, colWidths=[col_width] * num_cols)
     t.setStyle(TableStyle([
@@ -139,7 +98,6 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     buffer.seek(0)
     return buffer
 
-# --- 3. MAIN UI INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -151,7 +109,6 @@ inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
 
-# Debug Log Window in Sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ System Execution Log")
 log_container = st.sidebar.empty()
@@ -169,58 +126,72 @@ if st.button("Generate Resource Grid", type="primary"):
         st.warning("Please paste a text passage before generating.")
     else:
         st.session_state.logs = []
-        log_event("Initiating extraction process...")
+        log_event("Starting extraction...")
         update_log_ui()
-        
         start_time = time.time()
         
-        with st.spinner("Analysing passage & extracting Tier 2 vocabulary..."):
-            try:
-                log_event("Sending REST request to Google API...")
-                update_log_ui()
-                
-                vocab_data, used_model = extract_vocab_cached(user_text, target_year, word_count)
-                
-                api_elapsed = round(time.time() - start_time, 2)
-                log_event(f"Success! Model '{used_model}' responded in {api_elapsed}s.")
-                count_str = str(len(vocab_data))
-                log_event(f"Extracted {count_str} target words.")
-                update_log_ui()
-                
-                log_event("Rendering Landscape A4 PDF Document...")
-                update_log_ui()
-                
-                pdf_start = time.time()
-                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
-                pdf_elapsed = round(time.time() - pdf_start, 2)
-                
-                log_event(f"PDF built successfully in {pdf_elapsed}s.")
-                log_event("Displaying interactive resource grid...")
-                update_log_ui()
+        try:
+            log_event("Sending request to Google API...")
+            update_log_ui()
+            
+            vocab_data, used_model = extract_vocab_cached(user_text, target_year, word_count)
+            log_event(f"Success via {used_model} in {round(time.time() - start_time, 2)}s")
+            update_log_ui()
+            
+            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
+            log_event("PDF created.")
+            update_log_ui()
 
-                st.markdown("---")
+            st.markdown("---")
+            col_title, col_btn = st.columns([3, 1])
+            with col_title:
+                st.subheader("Learning New Vocabulary")
+            with col_btn:
+                st.download_button(
+                    label="📥 Download Printable PDF",
+                    data=pdf_buffer,
+                    file_name="Vocabulary_Worksheet.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+
+            for item in vocab_data:
+                word = item.get('word')
+                active_cols = [("Key Word", True)]
+                if inc_def: active_cols.append(("Definition", True))
+                if inc_sentence: active_cols.append(("Example Sentence", True))
+                if inc_related: active_cols.append(("Related Words", True))
                 
-                col_title, col_btn = st.columns([3, 1])
-                with col_title:
-                    st.subheader(" Learning New Vocabulary")
-                with col_btn:
-                    st.download_button(
-                        label="📥 Download Printable PDF",
-                        data=pdf_buffer,
-                        file_name="Vocabulary_Worksheet.pdf",
-                        mime="application/pdf",
-                        type="primary"
-                    )
+                grid = st.columns(len(active_cols))
+                c_idx = 0
 
-                for item in vocab_data:
-                    word = item.get('word')
-                    active_cols = [("Key Word", True)]
-                    if inc_def: active_cols.append(("Definition", True))
-                    if inc_sentence: active_cols.append(("Example Sentence", True))
-                    if inc_related: active_cols.append(("Related Words", True))
-                    
-                    grid = st.columns(len(active_cols))
-                    col_idx = 0
+                with grid[c_idx]:
+                    st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
+                c_idx += 1
 
-                    with grid[col_idx]:
-                        st
+                if inc_def:
+                    with grid[c_idx]:
+                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                    c_idx += 1
+
+                if inc_sentence:
+                    with grid[c_idx]:
+                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                    c_idx += 1
+
+                if inc_related:
+                    with grid[c_idx]:
+                        rel_list = item.get('related_words', [])
+                        rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
+                        st.markdown(f"**Related Words**\n\n{rel_str}")
+                    c_idx += 1
+
+                st.divider()
+
+            log_event(f"Done in {round(time.time() - start_time, 2)}s total.")
+            update_log_ui()
+
+        except Exception as e:
+            log_event(f"Error: {str(e)}")
+            update_log_ui()
+            st.error(f"Error generating resource: {e}")
