@@ -1,11 +1,3 @@
-Yes, exactly—updating these text labels and dropdown options is as simple as making a quick tweak to your app.py file on GitHub!
-
-Streamlit automatically detects changes to your repository and redeploys the app live within seconds of committing the update.
-
-Updated app.py Code
-Replace the entire contents of your app.py file on GitHub with this cleaned-up version:
-
-Python
 import streamlit as st
 import json
 import pandas as pd
