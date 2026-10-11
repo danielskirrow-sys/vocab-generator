@@ -2,10 +2,9 @@ import streamlit as st
 import json
 import requests
 import io
-from PIL import Image as PILImage
 
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -13,15 +12,13 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. CACHED TEXT ANALYSIS WITH ICON MAPPING ---
+# --- 1. CACHED TEXT ANALYSIS ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
     prompt = (
         f"Analyze passage for {target_year} UK secondary students: '{text}'. "
         f"Extract up to {word_count} Tier 2 words. Return JSON array with keys: "
-        "word, word_class, definition, sentence, related_words, icon_name "
-        "(lowercase single word Google Material symbol name e.g. gavel, search, "
-        "bolt, balance, menu-book, shield, flag, person)."
+        "word, word_class, definition, sentence, related_words."
     )
     
     models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
@@ -48,31 +45,8 @@ def extract_vocab_cached(text, target_year, word_count):
 
     raise Exception(f"API Failed: {last_err}")
 
-# --- 2. SAFE ICON FETCH WITH PILLOW VALIDATION ---
-@st.cache_data(show_spinner=False)
-def get_icon_image_bytes(icon_name):
-    clean_icon = str(icon_name).lower().strip().replace(" ", "-")
-    urls_to_try = [
-        f"https://api.iconify.design/material-symbols:{clean_icon}.png?color=%23333333&width=128&height=128",
-        "https://api.iconify.design/material-symbols:menu-book.png?color=%23333333&width=128&height=128"
-    ]
-    
-    for url in urls_to_try:
-        try:
-            res = requests.get(url, timeout=3)
-            if res.status_code == 200:
-                img_data = res.content
-                # Verify that the returned bytes are actually a valid image
-                img_check = PILImage.open(io.BytesIO(img_data))
-                img_check.verify()
-                return img_data
-        except Exception:
-            continue
-            
-    return None
-
-# --- 3. LANDSCAPE A4 PDF GENERATOR ---
-def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
+# --- 2. LANDSCAPE A4 PDF GENERATOR ---
+def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -88,7 +62,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=10)
     cell_style = ParagraphStyle('GridCell', parent=styles['Normal'], fontSize=9, leading=12)
     header_style = ParagraphStyle('GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold")
-    box_style = ParagraphStyle('SketchBox', parent=styles['Normal'], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#777777"))
+    box_style = ParagraphStyle('SketchBox', parent=styles['Normal'], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#888888"))
 
     elements.append(Paragraph("Learning New Vocabulary", title_style))
     elements.append(Spacer(1, 10))
@@ -100,8 +74,8 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
         headers.append(Paragraph("Example Sentence", header_style))
     if inc_related: 
         headers.append(Paragraph("Related Words", header_style))
-    if inc_icon: 
-        headers.append(Paragraph("Visual Anchor", header_style))
+    if inc_sketch: 
+        headers.append(Paragraph("Dual Coding Space", header_style))
 
     table_data = [headers]
 
@@ -118,14 +92,8 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
             r_val = item.get('related_words', [])
             r_str = ", ".join(r_val) if isinstance(r_val, list) else str(r_val)
             row.append(Paragraph(r_str, cell_style))
-        if inc_icon:
-            icon_name = item.get('icon_name', 'menu-book')
-            img_bytes = get_icon_image_bytes(icon_name)
-            if img_bytes:
-                img_obj = RLImage(io.BytesIO(img_bytes), width=32, height=32)
-                row.append(img_obj)
-            else:
-                row.append(Paragraph("<br/>[ Visual Anchor ]<br/>", box_style))
+        if inc_sketch:
+            row.append(Paragraph("<br/><br/>[ Sketch Visual Anchor ]<br/><br/>", box_style))
                 
         table_data.append(row)
 
@@ -145,7 +113,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     buffer.seek(0)
     return buffer
 
-# --- 4. MAIN INTERFACE ---
+# --- 3. MAIN INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -156,7 +124,7 @@ st.sidebar.header("2. Active Table Columns")
 inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
-inc_icon = st.sidebar.checkbox("Dual Coding Visual Icon", value=True)
+inc_sketch = st.sidebar.checkbox("Space for Dual Coding", value=True)
 
 user_text = st.text_area("Paste Text Below", height=200)
 
@@ -166,7 +134,7 @@ if st.button("Generate Resource Grid", type="primary"):
     else:
         try:
             vocab_data = extract_vocab_cached(user_text, target_year, word_count)
-            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon)
+            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch)
 
             st.markdown("---")
             col_title, col_btn = st.columns([3, 1])
@@ -184,8 +152,6 @@ if st.button("Generate Resource Grid", type="primary"):
             for item in vocab_data:
                 w_name = item.get('word', '')
                 w_class = item.get('word_class', '')
-                icon_name = item.get('icon_name', 'menu-book')
-                img_bytes = get_icon_image_bytes(icon_name)
 
                 active_cols = [("Key Word", True)]
                 if inc_def: 
@@ -194,8 +160,8 @@ if st.button("Generate Resource Grid", type="primary"):
                     active_cols.append(("Example Sentence", True))
                 if inc_related: 
                     active_cols.append(("Related Words", True))
-                if inc_icon: 
-                    active_cols.append(("Visual Icon", True))
+                if inc_sketch: 
+                    active_cols.append(("Space for Dual Coding", True))
                 
                 grid = st.columns(len(active_cols))
                 c_idx = 0
@@ -221,13 +187,10 @@ if st.button("Generate Resource Grid", type="primary"):
                         st.markdown(f"**Related Words**\n\n{rel_out}")
                     c_idx += 1
 
-                if inc_icon:
+                if inc_sketch:
                     with grid[c_idx]:
-                        st.markdown("**Visual Anchor**")
-                        if img_bytes:
-                            st.image(img_bytes, width=48)
-                        else:
-                            st.caption("✏️ *[ Visual Space ]*")
+                        st.markdown("**Dual Coding Space**")
+                        st.caption("✏️ *[ Student Sketch Box ]*")
                     c_idx += 1
 
                 st.divider()
