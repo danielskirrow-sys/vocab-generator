@@ -1,28 +1,27 @@
 import streamlit as st
 import json
 import requests
+import urllib.parse
 import io
-import time
+from PIL import Image
 
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", layout="wide")
 
-if "logs" not in st.session_state:
-    st.session_state.logs = []
-
-def log_event(msg):
-    ts = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{ts}] {msg}")
-
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
+# Initialize image storage in session state
+if "word_images" not in st.session_state:
+    st.session_state.word_images = {}
+
+# --- 1. CACHED TEXT ANALYSIS ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
-    prompt = f"Analyze the text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words for explicit instruction. Use British English spelling. Passage: '{text}'. Return JSON array with fields: word, word_class, definition, sentence, related_words."
+    prompt = f"Analyze the text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words for explicit instruction. Use British English spelling. Passage: '{text}'. Return JSON array with fields: word, word_class, definition, sentence, related_words, image_prompt."
     
     models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
@@ -38,10 +37,9 @@ def extract_vocab_cached(text, target_year, word_count):
             res = requests.post(url, headers=headers, json=payload, timeout=8)
             if res.status_code == 200:
                 raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(raw_text), model
+                return json.loads(raw_text)
             elif res.status_code == 429:
                 last_err = f"429 Quota limit on {model}"
-                time.sleep(1)
             else:
                 last_err = f"HTTP {res.status_code} on {model}"
         except Exception as e:
@@ -49,7 +47,21 @@ def extract_vocab_cached(text, target_year, word_count):
 
     raise Exception(f"API Failed: {last_err}")
 
-def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
+# --- 2. ON-DEMAND SINGLE IMAGE FETCH ---
+def fetch_single_image(word, prompt_text):
+    try:
+        raw_prompt = f"simple black and white line art vector icon representing {word}, {prompt_text}"
+        encoded_prompt = urllib.parse.quote(raw_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=200&height=200&nologo=true"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            return Image.open(io.BytesIO(res.content))
+    except Exception:
+        pass
+    return None
+
+# --- 3. LANDSCAPE A4 PDF GENERATOR ---
+def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
@@ -66,6 +78,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     if inc_def: headers.append(Paragraph("Definition", header_style))
     if inc_sentence: headers.append(Paragraph("Example Sentence", header_style))
     if inc_related: headers.append(Paragraph("Related Words", header_style))
+    if inc_dual_coding: headers.append(Paragraph("Visual Symbol", header_style))
 
     table_data = [headers]
 
@@ -80,6 +93,16 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
             rel_list = item.get('related_words', [])
             rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else str(rel_list)
             row.append(Paragraph(rel_str, cell_style))
+        if inc_dual_coding:
+            img = st.session_state.word_images.get(word)
+            if img:
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='PNG')
+                img_byte_arr.seek(0)
+                row.append(RLImage(img_byte_arr, width=50, height=50))
+            else:
+                row.append(Paragraph("<i>[Sketch Here]</i>", cell_style))
+                
         table_data.append(row)
 
     num_cols = len(headers)
@@ -98,6 +121,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     buffer.seek(0)
     return buffer
 
+# --- 4. MAIN INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -108,16 +132,7 @@ st.sidebar.header("2. Active Table Columns")
 inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ System Execution Log")
-log_container = st.sidebar.empty()
-
-def update_log_ui():
-    log_text = "\n".join(st.session_state.logs)
-    log_container.code(log_text if log_text else "Awaiting generation...", language="text")
-
-update_log_ui()
+inc_dual_coding = st.sidebar.checkbox("Dual Coding Column", value=True)
 
 user_text = st.text_area("Paste Text Below", height=200)
 
@@ -125,73 +140,77 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        st.session_state.logs = []
-        log_event("Starting extraction...")
-        update_log_ui()
-        start_time = time.time()
-        
-        try:
-            log_event("Sending request to Google API...")
-            update_log_ui()
+        st.session_state.word_images = {}  # Reset image cache on new generation
+        st.session_state.current_text = user_text
+
+if "current_text" in st.session_state and st.session_state.current_text:
+    try:
+        with st.spinner("Analyzing passage..."):
+            vocab_data = extract_vocab_cached(st.session_state.current_text, target_year, word_count)
+
+        st.markdown("---")
+        col_title, col_btn = st.columns([3, 1])
+        with col_title:
+            st.subheader("Learning New Vocabulary")
+        with col_btn:
+            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding)
+            st.download_button(
+                label="📥 Download Printable PDF",
+                data=pdf_buffer,
+                file_name="Vocabulary_Worksheet.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
+
+        for item in vocab_data:
+            word = item.get('word')
+            active_cols = [("Key Word", True)]
+            if inc_def: active_cols.append(("Definition", True))
+            if inc_sentence: active_cols.append(("Example Sentence", True))
+            if inc_related: active_cols.append(("Related Words", True))
+            if inc_dual_coding: active_cols.append(("Dual Coding Visual", True))
             
-            vocab_data, used_model = extract_vocab_cached(user_text, target_year, word_count)
-            log_event(f"Success via {used_model} in {round(time.time() - start_time, 2)}s")
-            update_log_ui()
-            
-            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
-            log_event("PDF created.")
-            update_log_ui()
+            grid = st.columns(len(active_cols))
+            c_idx = 0
 
-            st.markdown("---")
-            col_title, col_btn = st.columns([3, 1])
-            with col_title:
-                st.subheader("Learning New Vocabulary")
-            with col_btn:
-                st.download_button(
-                    label="📥 Download Printable PDF",
-                    data=pdf_buffer,
-                    file_name="Vocabulary_Worksheet.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
+            with grid[c_idx]:
+                st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
+            c_idx += 1
 
-            for item in vocab_data:
-                word = item.get('word')
-                active_cols = [("Key Word", True)]
-                if inc_def: active_cols.append(("Definition", True))
-                if inc_sentence: active_cols.append(("Example Sentence", True))
-                if inc_related: active_cols.append(("Related Words", True))
-                
-                grid = st.columns(len(active_cols))
-                c_idx = 0
-
+            if inc_def:
                 with grid[c_idx]:
-                    st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
+                    st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
                 c_idx += 1
 
-                if inc_def:
-                    with grid[c_idx]:
-                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
-                    c_idx += 1
+            if inc_sentence:
+                with grid[c_idx]:
+                    st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                c_idx += 1
 
-                if inc_sentence:
-                    with grid[c_idx]:
-                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
-                    c_idx += 1
+            if inc_related:
+                with grid[c_idx]:
+                    rel_list = item.get('related_words', [])
+                    rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
+                    st.markdown(f"**Related Words**\n\n{rel_str}")
+                c_idx += 1
 
-                if inc_related:
-                    with grid[c_idx]:
-                        rel_list = item.get('related_words', [])
-                        rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
-                        st.markdown(f"**Related Words**\n\n{rel_str}")
-                    c_idx += 1
+            if inc_dual_coding:
+                with grid[c_idx]:
+                    st.markdown("**Visual Symbol**")
+                    if word in st.session_state.word_images and st.session_state.word_images[word]:
+                        st.image(st.session_state.word_images[word], width=120)
+                    else:
+                        if st.button(f"🖼️ Generate Visual", key=f"btn_{word}"):
+                            with st.spinner("Fetching icon..."):
+                                fetched_img = fetch_single_image(word, item.get('image_prompt', ''))
+                                if fetched_img:
+                                    st.session_state.word_images[word] = fetched_img
+                                    st.rerun()
+                                else:
+                                    st.caption("*(Visual unavailable)*")
+                c_idx += 1
 
-                st.divider()
+            st.divider()
 
-            log_event(f"Done in {round(time.time() - start_time, 2)}s total.")
-            update_log_ui()
-
-        except Exception as e:
-            log_event(f"Error: {str(e)}")
-            update_log_ui()
-            st.error(f"Error generating resource: {e}")
+    except Exception as e:
+        st.error(f"Error generating resource: {e}")
