@@ -46,7 +46,8 @@ def extract_vocab_cached(text, target_year, word_count):
     - related_words: Array of related forms or morphology
     """
 
-    models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash"]
+    # Active, supported 2026 model endpoints
+    models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -56,23 +57,28 @@ def extract_vocab_cached(text, target_year, word_count):
         }
     }
 
+    last_err = ""
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         for attempt in range(2):
             try:
-                res = requests.post(url, headers=headers, json=payload, timeout=8)
+                res = requests.post(url, headers=headers, json=payload, timeout=10)
                 if res.status_code == 200:
                     res_data = res.json()
                     raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
                     return json.loads(raw_text), model
                 elif res.status_code == 429:
+                    last_err = f"429 Quota Exhausted on {model}"
                     time.sleep(1.5)
+                else:
+                    last_err = f"HTTP {res.status_code} ({model}): {res.text[:120]}"
+                    break  # Try next model on failure
             except requests.exceptions.Timeout:
-                pass  # Move to retry or next model
+                last_err = f"Timeout connecting to {model}"
             except Exception as e:
-                raise e
+                last_err = str(e)
 
-    raise Exception("API connection timed out or Quota Limit (429) hit. Please verify API Key in Streamlit Secrets.")
+    raise Exception(f"API Request Failed. Details: {last_err}")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
@@ -178,72 +184,4 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 api_elapsed = round(time.time() - start_time, 2)
                 log_event(f"Success! Model '{used_model}' responded in {api_elapsed}s.")
-                log_event(f"Extracted {len(vocab_data)} target words.")
-                update_log_ui()
-                
-                log_event("Rendering Landscape A4 PDF Document...")
-                update_log_ui()
-                
-                pdf_start = time.time()
-                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
-                pdf_elapsed = round(time.time() - pdf_start, 2)
-                
-                log_event(f"PDF built successfully in {pdf_elapsed}s.")
-                log_event("Displaying interactive resource grid...")
-                update_log_ui()
-
-                st.markdown("---")
-                
-                col_title, col_btn = st.columns([3, 1])
-                with col_title:
-                    st.subheader(" Learning New Vocabulary")
-                with col_btn:
-                    st.download_button(
-                        label="📥 Download Printable PDF",
-                        data=pdf_buffer,
-                        file_name="Vocabulary_Worksheet.pdf",
-                        mime="application/pdf",
-                        type="primary"
-                    )
-
-                for item in vocab_data:
-                    word = item.get('word')
-                    active_cols = [("Key Word", True)]
-                    if inc_def: active_cols.append(("Definition", True))
-                    if inc_sentence: active_cols.append(("Example Sentence", True))
-                    if inc_related: active_cols.append(("Related Words", True))
-                    
-                    grid = st.columns(len(active_cols))
-                    col_idx = 0
-
-                    with grid[col_idx]:
-                        st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
-                    col_idx += 1
-
-                    if inc_def:
-                        with grid[col_idx]:
-                            st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
-                        col_idx += 1
-
-                    if inc_sentence:
-                        with grid[col_idx]:
-                            st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
-                        col_idx += 1
-
-                    if inc_related:
-                        with grid[col_idx]:
-                            rel_list = item.get('related_words', [])
-                            rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
-                            st.markdown(f"**Related Words**\n\n{rel_str}")
-                        col_idx += 1
-
-                    st.divider()
-
-                total_time = round(time.time() - start_time, 2)
-                log_event(f"COMPLETE! Total turnaround time: {total_time}s.")
-                update_log_ui()
-
-            except Exception as e:
-                log_event(f"ERROR: {str(e)}")
-                update_log_ui()
-                st.error(f"Error generating resource: {e}")
+                log_event(f"Extracted {len(
