@@ -1,3 +1,11 @@
+Yes, exactly—updating these text labels and dropdown options is as simple as making a quick tweak to your app.py file on GitHub!
+
+Streamlit automatically detects changes to your repository and redeploys the app live within seconds of committing the update.
+
+Updated app.py Code
+Replace the entire contents of your app.py file on GitHub with this cleaned-up version:
+
+Python
 import streamlit as st
 import json
 import pandas as pd
@@ -8,7 +16,7 @@ import io
 
 # Page Configuration
 st.set_page_config(
-    page_title="Explicit Vocabulary Generator", 
+    page_title="Vocabulary Support Generator", 
     page_icon="📚", 
     layout="wide"
 )
@@ -17,23 +25,22 @@ st.set_page_config(
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-st.title("📚 Classroom Vocabulary Resource Generator")
-st.write("Extract high-utility Tier 2 vocabulary from curriculum texts and generate custom, print-ready teaching grids.")
+# Title
+st.title("📚 Vocabulary Support Generator")
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("1. Target Options")
 word_count = st.sidebar.slider("Number of words to extract", min_value=1, max_value=8, value=5)
-target_year = st.sidebar.selectbox("Target Key Stage / Year", ["KS1 (Years 1-2)", "LKS2 (Years 3-4)", "UKS2 (Years 5-6)", "KS3 (Years 7-9)"])
+target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"])
 
 st.sidebar.header("2. Active Table Columns")
-st.sidebar.write("Toggle features to include or exclude from the generated resource:")
 inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
 inc_dual_coding = st.sidebar.checkbox("Dual Coding (Generated Image)", value=True)
 
 # --- MAIN INTERFACE ---
-user_text = st.text_area("Paste English Curriculum Passage Here:", height=200, placeholder="e.g., London lies to-day under the spell of a great terror...")
+user_text = st.text_area("Paste Text Below", height=200)
 
 if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
@@ -41,9 +48,9 @@ if st.button("Generate Resource Grid", type="primary"):
     else:
         with st.spinner("Analyzing text, processing vocabulary, and generating images..."):
             
-            # Construct API Prompt based on toggling selections
+            # Construct API Prompt
             prompt = f"""
-            Analyze the following text meant for {target_year} students. 
+            Analyze the following text meant for {target_year} secondary school students. 
             Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
             
             Passage:
@@ -72,11 +79,9 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 st.markdown("---")
                 st.subheader(" Learning New Vocabulary")
-                st.caption("Printable preview grid generated based on active toggles.")
 
                 # Process each extracted word row
                 for item in vocab_data:
-                    # Dynamically determine columns based on active checkboxes
                     active_cols = [("Key Word", True)]
                     if inc_def: active_cols.append(("Definition", True))
                     if inc_sentence: active_cols.append(("Example Sentence", True))
