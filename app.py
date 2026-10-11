@@ -27,14 +27,11 @@ st.set_page_config(
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# --- HELPER FUNCTION 1: Fetch Dual Coding Visual via Pollinations.ai (Fast & Reliable) ---
+# --- HELPER FUNCTION 1: Fetch Dual Coding Visual via Pollinations.ai ---
 def fetch_single_image(word, prompt_text):
     try:
-        # Build concise black-and-white vector line-art prompt
-        raw_prompt = f"simple black and white vector line art illustration icon for educational dual coding representing the word {word}, {prompt_text}"
+        raw_prompt = f"simple black and white vector line art icon for educational dual coding representing {word}, {prompt_text}"
         encoded_prompt = urllib.parse.quote(raw_prompt)
-        
-        # Direct URL call
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=300&height=300&nologo=true&seed=42"
         
         response = requests.get(url, timeout=12)
@@ -127,35 +124,4 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Analysing text and processing vocabulary..."):
-            prompt = f"""
-            Analyze the following text meant for {target_year} secondary school students in the UK. 
-            Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
-            Use British English spelling in all definitions and example sentences.
-            
-            Passage:
-            "{user_text}"
-            
-            Return a JSON array where each object strictly contains the following fields:
-            - word: Target word
-            - word_class: Word class (e.g. Noun, Verb, Adjective)
-            {"- definition: Student-friendly definition suitable for " + target_year if inc_def else ""}
-            {"- sentence: Example sentence showing practical classroom usage" if inc_sentence else ""}
-            {"- related_words: Array of related forms or morphology" if inc_related else ""}
-            {"- image_prompt: Concise prompt for a clear visual/icon representing the word" if inc_dual_coding else ""}
-            """
-
-            try:
-                text_response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                    ),
-                )
-                
-                vocab_data = json.loads(text_response.text)
-                
-                image_dict = {}
-                if inc_dual_coding:
-                    with st.spinner("Generating dual coding visuals
+        with st.spinner("Analysing text and processing vocabulary...
