@@ -1,44 +1,66 @@
 import streamlit as st
 import json
-import urllib.parse
-import requests
-from PIL import Image
 import io
 
+# ReportLab Imports for PDF Generation
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", layout="wide")
+# Page Setup
+st.set_page_config(
+    page_title="Vocabulary Support Generator", 
+    page_icon="📚", 
+    layout="wide"
+)
 
+# Initialize Gemini Client
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# 1. CACHED TEXT ANALYSIS (Instant response on re-renders)
-@st.cache_data(show_spinner=False)
-def analyze_vocabulary(text, target_year, word_count):
+# --- 1. TEXT GENERATION FUNCTION ---
+def extract_vocab(text, target_year, word_count):
     prompt = f"""
-    Analyze the following text for {target_year} UK secondary students. 
-    Extract up to {word_count} Tier 2 words for explicit instruction. 
-    Use British English spelling. 
-    Passage: "{text}"
-    Return a JSON array with fields: word, word_class, definition, sentence, related_words.
+    Analyze the following text meant for {target_year} secondary school students in the UK. 
+    Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
+    Use British English spelling in all definitions and example sentences.
+    
+    Passage:
+    "{text}"
+    
+    Return a JSON array where each object strictly contains the following fields:
+    - word: Target word
+    - word_class: Word class (e.g. Noun, Verb, Adjective)
+    - definition: Student-friendly definition suitable for {target_year}
+    - sentence: Example sentence showing practical classroom usage
+    - related_words: Array of related forms or morphology
     """
+
     response = client.models.generate_content(
         model='gemini-3.8-flash',
         contents=prompt,
-        config=types.GenerateContentConfig(response_mime_type="application/json")
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.1
+        ),
     )
     return json.loads(response.text)
 
-# 2. PDF GENERATION
+# --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=landscape(A4), 
+        rightMargin=30, 
+        leftMargin=30, 
+        topMargin=30, 
+        bottomMargin=30
+    )
     elements = []
     
     styles = getSampleStyleSheet()
@@ -88,7 +110,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
     buffer.seek(0)
     return buffer
 
-# 3. INTERFACE
+# --- 3. MAIN UI INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -106,9 +128,9 @@ if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Analysing text..."):
+        with st.spinner("Generating vocabulary support grid..."):
             try:
-                vocab_data = analyze_vocabulary(user_text, target_year, word_count)
+                vocab_data = extract_vocab(user_text, target_year, word_count)
                 
                 st.markdown("---")
                 
