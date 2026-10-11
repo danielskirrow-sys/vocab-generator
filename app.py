@@ -12,21 +12,10 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. CACHED TEXT ANALYSIS WITH ICON CONCEPT MAPPING ---
+# --- 1. CACHED TEXT ANALYSIS WITH ICON MAPPING ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
-    prompt = f"""
-    Analyze the text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words for explicit instruction.
-    Use British English spelling. Passage: '{text}'.
-    
-    Return a JSON array with fields:
-    - word
-    - word_class
-    - definition
-    - sentence
-    - related_words
-    - icon_name: A single simple lower-case Google Material Symbol name representing the word visually (e.g. 'gavel', 'search', 'bolt', 'balance', 'menu-book', 'visibility', 'shield', 'flag', 'person').
-    """
+    prompt = f"Analyze passage for {target_year} UK secondary students: '{text}'. Extract up to {word_count} Tier 2 words. Return JSON array with keys: word, word_class, definition, sentence, related_words, icon_name (lowercase single word Google Material symbol name e.g. gavel, search, bolt, balance, menu-book, shield, flag, person)."
     
     models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
     headers = {"Content-Type": "application/json"}
@@ -55,20 +44,18 @@ def extract_vocab_cached(text, target_year, word_count):
 # --- 2. FAST UNWATERMARKED PNG ICON FETCHING ---
 @st.cache_data(show_spinner=False)
 def get_icon_image_bytes(icon_name):
-    clean_icon = icon_name.lower().strip().replace(" ", "-")
-    # Using .png endpoint so ReportLab handles image bytes without SVG parsers
+    clean_icon = str(icon_name).lower().strip().replace(" ", "-")
     url = f"https://api.iconify.design/material-symbols:{clean_icon}.png?color=%23333333&width=128&height=128"
     try:
         res = requests.get(url, timeout=4)
         if res.status_code == 200 and len(res.content) > 100:
-            return res.content, url
+            return res.content
     except Exception:
         pass
     
-    # Fallback PNG if requested icon name fails
     fallback_url = "https://api.iconify.design/material-symbols:menu-book.png?color=%23333333&width=128&height=128"
     res = requests.get(fallback_url, timeout=4)
-    return res.content, fallback_url
+    return res.content
 
 # --- 3. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
@@ -93,8 +80,10 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
     table_data = [headers]
 
     for item in vocab_data:
-        word = item.get('word', '')
-        row = [Paragraph(f"<b>{word}</b><br/><i>({item.get('word_class', '')})</i>", cell_style)]
+        w_text = item.get('word', '')
+        w_cls = item.get('word_class', '')
+        row = [Paragraph(f"<b>{w_text}</b><br/><i>({w_cls})</i>", cell_style)]
+        
         if inc_def:
             row.append(Paragraph(item.get('definition', 'N/A'), cell_style))
         if inc_sentence:
@@ -105,8 +94,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_icon):
             row.append(Paragraph(rel_str, cell_style))
         if inc_icon:
             icon_name = item.get('icon_name', 'menu-book')
-            img_bytes, _ = get_icon_image_bytes(icon_name)
-            # Create a native ReportLab RLImage object from PNG bytes
+            img_bytes = get_icon_image_bytes(icon_name)
             img_obj = RLImage(io.BytesIO(img_bytes), width=32, height=32)
             row.append(img_obj)
                 
@@ -165,9 +153,10 @@ if st.button("Generate Resource Grid", type="primary"):
                 )
 
             for item in vocab_data:
-                word = item.get('word')
+                w_name = item.get('word', '')
+                w_class = item.get('word_class', '')
                 icon_name = item.get('icon_name', 'menu-book')
-                img_bytes, _ = get_icon_image_bytes(icon_name)
+                img_bytes = get_icon_image_bytes(icon_name)
 
                 active_cols = [("Key Word", True)]
                 if inc_def: active_cols.append(("Definition", True))
@@ -179,4 +168,20 @@ if st.button("Generate Resource Grid", type="primary"):
                 c_idx = 0
 
                 with grid[c_idx]:
-                    st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('
+                    st.markdown(f"**Key Word**\n\n### {w_name}\n*({w_class})*")
+                c_idx += 1
+
+                if inc_def:
+                    with grid[c_idx]:
+                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                    c_idx += 1
+
+                if inc_sentence:
+                    with grid[c_idx]:
+                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                    c_idx += 1
+
+                if inc_related:
+                    with grid[c_idx]:
+                        rel_list = item.get('related_words', [])
+                        rel_str =
