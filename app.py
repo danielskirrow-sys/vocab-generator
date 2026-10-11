@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import requests
 import io
+import time
 
 # ReportLab Imports for PDF Generation
 from reportlab.lib.pagesizes import A4, landscape
@@ -16,10 +17,19 @@ st.set_page_config(
     layout="wide"
 )
 
-api_key = st.secrets["GEMINI_API_KEY"]
+# Initialize Session State for Logs
+if "logs" not in st.session_state:
+    st.session_state.logs = []
 
-# --- 1. DIRECT REST API CALL (Fast & Anti-Stall) ---
-def extract_vocab(text, target_year, word_count):
+def log_event(message):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {message}")
+
+api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+# --- 1. CACHED DIRECT REST API CALL ---
+@st.cache_data(show_spinner=False)
+def extract_vocab_cached(text, target_year, word_count):
     prompt = f"""
     Analyze the following text meant for {target_year} secondary school students in the UK. 
     Extract up to {word_count} target Tier 2 words suitable for explicit vocabulary instruction.
@@ -36,7 +46,7 @@ def extract_vocab(text, target_year, word_count):
     - related_words: Array of related forms or morphology
     """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
+    models_to_try = ["gemini-3.8-flash", "gemini-1.5-flash"]
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -46,15 +56,23 @@ def extract_vocab(text, target_year, word_count):
         }
     }
 
-    # Hard 8-second timeout prevents indefinite hanging
-    response = requests.post(url, headers=headers, json=payload, timeout=8)
-    
-    if response.status_code == 200:
-        res_data = response.json()
-        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        return json.loads(raw_text)
-    else:
-        raise Exception(f"API Error {response.status_code}: {response.text[:100]}")
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        for attempt in range(2):
+            try:
+                res = requests.post(url, headers=headers, json=payload, timeout=8)
+                if res.status_code == 200:
+                    res_data = res.json()
+                    raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(raw_text), model
+                elif res.status_code == 429:
+                    time.sleep(1.5)
+            except requests.exceptions.Timeout:
+                pass  # Move to retry or next model
+            except Exception as e:
+                raise e
+
+    raise Exception("API connection timed out or Quota Limit (429) hit. Please verify API Key in Streamlit Secrets.")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related):
@@ -128,23 +146,58 @@ inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
 
+# Debug Log Window in Sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ System Execution Log")
+log_container = st.sidebar.empty()
+
+def update_log_ui():
+    log_text = "\n".join(st.session_state.logs)
+    log_container.code(log_text if log_text else "Awaiting generation...", language="text")
+
+update_log_ui()
+
 user_text = st.text_area("Paste Text Below", height=200)
 
 if st.button("Generate Resource Grid", type="primary"):
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     else:
-        with st.spinner("Generating vocabulary support grid..."):
+        st.session_state.logs = []
+        log_event("Initiating extraction process...")
+        update_log_ui()
+        
+        start_time = time.time()
+        
+        with st.spinner("Analysing passage & extracting Tier 2 vocabulary..."):
             try:
-                vocab_data = extract_vocab(user_text, target_year, word_count)
+                log_event("Sending REST request to Google API...")
+                update_log_ui()
                 
+                vocab_data, used_model = extract_vocab_cached(user_text, target_year, word_count)
+                
+                api_elapsed = round(time.time() - start_time, 2)
+                log_event(f"Success! Model '{used_model}' responded in {api_elapsed}s.")
+                log_event(f"Extracted {len(vocab_data)} target words.")
+                update_log_ui()
+                
+                log_event("Rendering Landscape A4 PDF Document...")
+                update_log_ui()
+                
+                pdf_start = time.time()
+                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
+                pdf_elapsed = round(time.time() - pdf_start, 2)
+                
+                log_event(f"PDF built successfully in {pdf_elapsed}s.")
+                log_event("Displaying interactive resource grid...")
+                update_log_ui()
+
                 st.markdown("---")
                 
                 col_title, col_btn = st.columns([3, 1])
                 with col_title:
                     st.subheader(" Learning New Vocabulary")
                 with col_btn:
-                    pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related)
                     st.download_button(
                         label="📥 Download Printable PDF",
                         data=pdf_buffer,
@@ -186,5 +239,11 @@ if st.button("Generate Resource Grid", type="primary"):
 
                     st.divider()
 
+                total_time = round(time.time() - start_time, 2)
+                log_event(f"COMPLETE! Total turnaround time: {total_time}s.")
+                update_log_ui()
+
             except Exception as e:
+                log_event(f"ERROR: {str(e)}")
+                update_log_ui()
                 st.error(f"Error generating resource: {e}")
