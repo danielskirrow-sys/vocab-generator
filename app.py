@@ -4,6 +4,7 @@ import urllib.parse
 import requests
 from PIL import Image
 import io
+import time
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
@@ -20,22 +21,43 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# 1. Ultra-Fast Image Fetcher with 3-Second Hard Timeout
+# 1. Fast Image Fetcher
 def fetch_single_image(word, prompt_text):
     try:
         raw_prompt = f"simple line art icon for {word}"
         encoded_prompt = urllib.parse.quote(raw_prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=250&height=250&nologo=true"
         
-        # Hard 3-second timeout prevents Streamlit from hanging
         res = requests.get(url, timeout=3)
         if res.status_code == 200:
             return Image.open(io.BytesIO(res.content)), None
         return None, f"HTTP {res.status_code}"
-    except Exception as e:
+    except Exception:
         return None, "Timeout"
 
-# 2. PDF Generator
+# 2. Resilient Gemini API Caller (Handles 503 Overloads & Fallbacks)
+def safe_generate_content(prompt):
+    models_to_try = ['gemini-3.8-flash', 'gemini-3.5-flash-lite']
+    
+    for model_name in models_to_try:
+        for attempt in range(3): # Try up to 3 times per model
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
+                return response.text
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str or "UNAVAILABLE" in err_str:
+                    time.sleep(2) # Pause before retrying
+                else:
+                    break # If it's a different error, move to fallback model
+                    
+    raise Exception("Google API is currently experiencing high demand. Please try again in a few moments.")
+
+# 3. PDF Generator
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -98,7 +120,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
     buffer.seek(0)
     return buffer
 
-# 3. Main UI Interface
+# 4. Main UI Interface
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
@@ -122,16 +144,11 @@ if st.button("Generate Resource Grid", type="primary"):
             prompt = f"Analyze the following text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words. Use British English spelling. Passage: '{user_text}'. Return a JSON array with fields: word, word_class, definition, sentence, related_words, image_prompt."
 
             try:
-                # 1. Fast Text Analysis Call
-                text_response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json"),
-                )
+                # 1. Resilient Text Analysis Call
+                raw_json = safe_generate_content(prompt)
+                vocab_data = json.loads(raw_json)
                 
-                vocab_data = json.loads(text_response.text)
-                
-                # 2. Sequential Fast Image Fetching
+                # 2. Image Fetching (Only if checked)
                 image_dict = {}
                 if inc_dual_coding:
                     for item in vocab_data:
