@@ -1,6 +1,8 @@
 import streamlit as st
 import json
 import pandas as pd
+import urllib.parse
+import requests
 from PIL import Image
 import io
 import concurrent.futures
@@ -25,25 +27,20 @@ st.set_page_config(
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
-# --- HELPER FUNCTION 1: Fetch Single Image Safely ---
+# --- HELPER FUNCTION 1: Fetch Dual Coding Visual via Pollinations.ai (Fast & Reliable) ---
 def fetch_single_image(word, prompt_text):
     try:
-        img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
+        # Build concise black-and-white vector line-art prompt
+        raw_prompt = f"simple black and white vector line art illustration icon for educational dual coding representing the word {word}, {prompt_text}"
+        encoded_prompt = urllib.parse.quote(raw_prompt)
         
-        response = client.models.generate_content(
-            model='imagen-3.0-generate-002',
-            contents=img_prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-            ),
-        )
+        # Direct URL call
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=300&height=300&nologo=true&seed=42"
         
-        if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data:
-                    return Image.open(io.BytesIO(part.inline_data.data)), None
-                    
-        return None, "No visual data returned"
+        response = requests.get(url, timeout=12)
+        if response.status_code == 200:
+            return Image.open(io.BytesIO(response.content)), None
+        return None, f"HTTP {response.status_code}"
     except Exception as e:
         return None, str(e)
 
@@ -110,6 +107,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding
     buffer.seek(0)
     return buffer
 
+
 # --- MAIN UI INTERFACE ---
 st.title("📚 Vocabulary Support Generator")
 
@@ -160,79 +158,4 @@ if st.button("Generate Resource Grid", type="primary"):
                 
                 image_dict = {}
                 if inc_dual_coding:
-                    with st.spinner("Generating dual coding visuals in parallel..."):
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future_to_word = {
-                                executor.submit(fetch_single_image, item.get('word'), item.get('image_prompt', '')): item.get('word') 
-                                for item in vocab_data
-                            }
-                            for future in concurrent.futures.as_completed(future_to_word):
-                                word = future_to_word[future]
-                                try:
-                                    image_dict[word] = future.result()
-                                except Exception as err:
-                                    image_dict[word] = (None, str(err))
-
-                st.markdown("---")
-                
-                col_title, col_btn = st.columns([3, 1])
-                with col_title:
-                    st.subheader(" Learning New Vocabulary")
-                with col_btn:
-                    pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict)
-                    st.download_button(
-                        label="📥 Download Printable PDF",
-                        data=pdf_buffer,
-                        file_name="Vocabulary_Worksheet.pdf",
-                        mime="application/pdf",
-                        type="primary"
-                    )
-
-                for item in vocab_data:
-                    word = item.get('word')
-                    active_cols = [("Key Word", True)]
-                    if inc_def: active_cols.append(("Definition", True))
-                    if inc_sentence: active_cols.append(("Example Sentence", True))
-                    if inc_related: active_cols.append(("Related Words", True))
-                    if inc_dual_coding: active_cols.append(("Image", True))
-                    
-                    grid = st.columns(len(active_cols))
-                    col_idx = 0
-
-                    with grid[col_idx]:
-                        st.markdown(f"**Key Word**\n\n### {word}\n*({item.get('word_class')})*")
-                    col_idx += 1
-
-                    if inc_def:
-                        with grid[col_idx]:
-                            st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
-                        col_idx += 1
-
-                    if inc_sentence:
-                        with grid[col_idx]:
-                            st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
-                        col_idx += 1
-
-                    if inc_related:
-                        with grid[col_idx]:
-                            rel_list = item.get('related_words', [])
-                            rel_str = ", ".join(rel_list) if isinstance(rel_list, list) else rel_list
-                            st.markdown(f"**Related Words**\n\n{rel_str}")
-                        col_idx += 1
-
-                    if inc_dual_coding:
-                        with grid[col_idx]:
-                            st.markdown("**Image**")
-                            img, err_msg = image_dict.get(word, (None, None))
-                            if img:
-                                st.image(img, use_container_width=True)
-                            elif err_msg:
-                                st.caption(f"🖼️ *(Image error: {err_msg[:60]}...)*")
-                            else:
-                                st.caption("🖼️ *(Visual unavailable)*")
-                        col_idx += 1
-
-                    st.divider()
-
-            except Exception as e:
-                st.error(f"Error generating resource: {e}")
+                    with st.spinner("Generating dual coding visuals
