@@ -12,13 +12,25 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. CACHED TEXT ANALYSIS ---
+# --- 1. AGE-CALIBRATED CACHED TEXT ANALYSIS ---
 @st.cache_data(show_spinner=False)
 def extract_vocab_cached(text, target_year, word_count):
+    # Age range mapping for explicit UK secondary calibration
+    age_map = {
+        "Year 7": "ages 11-12",
+        "Year 8": "ages 12-13",
+        "Year 9": "ages 13-14",
+        "Year 10": "ages 14-15",
+        "Year 11": "ages 15-16"
+    }
+    target_age = age_map.get(target_year, "ages 11-16")
+
     prompt = (
-        f"Analyze passage for {target_year} UK secondary students: '{text}'. "
-        f"Extract up to {word_count} Tier 2 words. Return JSON array with keys: "
-        "word, word_class, definition, sentence, related_words."
+        f"Act as a UK secondary school literacy specialist. Analyze the passage for {target_year} students ({target_age}): '{text}'. "
+        f"Extract up to {word_count} target Tier 2 vocabulary words that represent an appropriate challenge, sitting just above the "
+        f"independent reading level of a typical {target_year} pupil. "
+        f"Write student-friendly definitions and example sentences using tone and vocabulary appropriate for {target_year} ({target_age}). "
+        "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, related_words."
     )
     
     models = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
@@ -62,7 +74,7 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
     title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=10)
     cell_style = ParagraphStyle('GridCell', parent=styles['Normal'], fontSize=9, leading=12)
     header_style = ParagraphStyle('GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold")
-    box_style = ParagraphStyle('SketchBox', parent=styles['Normal'], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#888888"))
+    blank_style = ParagraphStyle('BlankBox', parent=styles['Normal'], fontSize=9, leading=12)
 
     elements.append(Paragraph("Learning New Vocabulary", title_style))
     elements.append(Spacer(1, 10))
@@ -93,7 +105,8 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
             r_str = ", ".join(r_val) if isinstance(r_val, list) else str(r_val)
             row.append(Paragraph(r_str, cell_style))
         if inc_sketch:
-            row.append(Paragraph("<br/><br/>[ Sketch Visual Anchor ]<br/><br/>", box_style))
+            # Completely blank cell for student sketching
+            row.append(Paragraph("<br/><br/><br/>", blank_style))
                 
         table_data.append(row)
 
@@ -190,7 +203,8 @@ if st.button("Generate Resource Grid", type="primary"):
                 if inc_sketch:
                     with grid[c_idx]:
                         st.markdown("**Dual Coding Space**")
-                        st.caption("✏️ *[ Student Sketch Box ]*")
+                        # Blank container box for visual UI preview
+                        st.container(height=80, border=True)
                     c_idx += 1
 
                 st.divider()
