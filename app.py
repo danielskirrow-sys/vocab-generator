@@ -35,27 +35,27 @@ def fetch_single_image(word, prompt_text):
     except Exception:
         return None, "Timeout"
 
-# 2. Resilient Gemini API Caller (Handles 503 Overloads & Fallbacks)
-def safe_generate_content(prompt):
-    models_to_try = ['gemini-3.8-flash', 'gemini-3.5-flash-lite']
+# 2. Hardened Text Generation with Fast Model Fallbacks
+def generate_text_with_timeout(prompt):
+    # Models ordered by speed and availability
+    candidate_models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash']
     
-    for model_name in models_to_try:
-        for attempt in range(3): # Try up to 3 times per model
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json"),
-                )
+    for model_name in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2
+                ),
+            )
+            if response.text:
                 return response.text
-            except Exception as e:
-                err_str = str(e)
-                if "503" in err_str or "UNAVAILABLE" in err_str:
-                    time.sleep(2) # Pause before retrying
-                else:
-                    break # If it's a different error, move to fallback model
-                    
-    raise Exception("Google API is currently experiencing high demand. Please try again in a few moments.")
+        except Exception:
+            continue
+            
+    raise Exception("API connection timed out. Please refresh the page and try again.")
 
 # 3. PDF Generator
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_dual_coding, image_dict):
@@ -131,7 +131,7 @@ st.sidebar.header("2. Active Table Columns")
 inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
 inc_related = st.sidebar.checkbox("Related Words", value=True)
-inc_dual_coding = st.sidebar.checkbox("Dual Coding (Generated Image)", value=True)
+inc_dual_coding = st.sidebar.checkbox("Dual Coding (Generated Image)", value=False)
 
 user_text = st.text_area("Paste Text Below", height=200)
 
@@ -141,14 +141,14 @@ if st.button("Generate Resource Grid", type="primary"):
     else:
         with st.spinner("Analysing text and generating resources..."):
             
-            prompt = f"Analyze the following text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words. Use British English spelling. Passage: '{user_text}'. Return a JSON array with fields: word, word_class, definition, sentence, related_words, image_prompt."
+            prompt = f"Analyze the following text for {target_year} UK secondary students. Extract up to {word_count} Tier 2 words suitable for explicit instruction. Use British English spelling throughout. Passage: '{user_text}'. Return a JSON array where each object strictly contains: word, word_class, definition, sentence, related_words, image_prompt."
 
             try:
-                # 1. Resilient Text Analysis Call
-                raw_json = safe_generate_content(prompt)
+                # 1. High-Speed Content Generation
+                raw_json = generate_text_with_timeout(prompt)
                 vocab_data = json.loads(raw_json)
                 
-                # 2. Image Fetching (Only if checked)
+                # 2. Dual Coding Fetching (Only runs when enabled)
                 image_dict = {}
                 if inc_dual_coding:
                     for item in vocab_data:
