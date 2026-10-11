@@ -30,20 +30,20 @@ def fetch_single_image(word, prompt_text):
     try:
         img_prompt = f"Simple black and white vector line illustration for educational dual coding representing the word '{word}': {prompt_text}"
         
-        img_response = client.models.generate_images(
+        response = client.models.generate_content(
             model='imagen-3.0-generate-002',
-            prompt=img_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="1:1"
-            )
+            contents=img_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+            ),
         )
         
-        if img_response and img_response.generated_images:
-            for generated_image in img_response.generated_images:
-                return Image.open(io.BytesIO(generated_image.image.image_bytes)), None
-                
-        return None, "No image generated"
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    return Image.open(io.BytesIO(part.inline_data.data)), None
+                    
+        return None, "No visual data returned"
     except Exception as e:
         return None, str(e)
 
