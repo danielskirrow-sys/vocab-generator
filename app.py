@@ -1,7 +1,8 @@
 import streamlit as st
 import json
-import requests
 import io
+from google import genai
+from google.genai import types
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -33,35 +34,21 @@ def extract_vocab_cached(text, target_year, word_count):
         "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, related_words."
     )
     
-    models = ["gemini-2.5-flash"]
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
-    }
-
-    last_err = ""
-    for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        
-        # AQ keys are passed strictly in the x-goog-api-key header
-        req_headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key.strip()
-        }
-        
-        try:
-            res = requests.post(url, headers=req_headers, json=payload, timeout=8)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(raw_text)
-            elif res.status_code == 429:
-                last_err = f"429 Quota limit on {model}"
-            else:
-                last_err = f"HTTP {res.status_code} on {model}"
-        except Exception as e:
-            last_err = str(e)
-
-    raise Exception(f"API Failed: {last_err}")
+    # Initialize the Google GenAI Client with the key
+    client = genai.Client(api_key=api_key.strip())
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1,
+            ),
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        raise Exception(f"API Failed: {str(e)}")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
