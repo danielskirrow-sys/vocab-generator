@@ -33,7 +33,7 @@ def extract_vocab_cached(text, target_year, word_count):
         "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, related_words."
     )
     
-    models = ["models = ["gemini-2.5-flash"]"]
+    models = ["gemini-2.5-flash"]
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
