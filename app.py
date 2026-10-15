@@ -4,17 +4,11 @@ import requests
 import io
 
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-st.set_page_config(
-    page_title="Vocabulary Support Generator", 
-    page_icon="📚", 
-    layout="wide"
-)
+st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", layout="wide")
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
@@ -30,24 +24,19 @@ def extract_vocab(text, target_year, word_count):
     target_age = age_map.get(target_year, "ages 11-16")
 
     prompt = (
-        f"Act as a UK secondary school literacy specialist. "
-        f"Analyze the passage for {target_year} students ({target_age}): '{text}'. "
-        f"Extract up to {word_count} target Tier 2 vocabulary words that represent an appropriate challenge, "
-        f"sitting just above the independent reading level of a typical {target_year} pupil. "
+        f"Act as a UK secondary school literacy specialist. Analyze the passage for {target_year} students ({target_age}): '{text}'. "
+        f"Extract up to {word_count} target Tier 2 vocabulary words that represent an appropriate challenge, sitting just above the "
+        f"independent reading level of a typical {target_year} pupil. "
         f"Write student-friendly definitions and example sentences using tone and vocabulary appropriate for {target_year} ({target_age}). "
         f"For 'word_forms', list alternative word class forms of the target word (e.g., noun, verb, adjective, or adverb variants). "
-        f"For 'word_families', identify shared root words, prefixes, or morphologically linked terms "
-        f"(e.g., for 'insatiable', include 'satisfied, satiate, satisfaction'). "
+        f"For 'word_families', identify shared root words, prefixes, or morphologically linked terms (e.g., for 'insatiable', include 'satisfied, satiate, satisfaction'). "
         "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, word_forms, word_families."
     )
     
     models = ["gemini-2.5-flash", "gemini-3.5-flash-lite"]
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "response_mime_type": "application/json", 
-            "temperature": 0.1
-        }
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
     }
 
     last_err = ""
@@ -83,18 +72,10 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_forms, inc_families, inc
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=10
-    )
-    cell_style = ParagraphStyle(
-        'GridCell', parent=styles['Normal'], fontSize=9, leading=12
-    )
-    header_style = ParagraphStyle(
-        'GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold"
-    )
-    blank_style = ParagraphStyle(
-        'BlankBox', parent=styles['Normal'], fontSize=9, leading=12
-    )
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=10)
+    cell_style = ParagraphStyle('GridCell', parent=styles['Normal'], fontSize=9, leading=12)
+    header_style = ParagraphStyle('GridHeader', parent=styles['Normal'], fontSize=10, leading=12, fontName="Helvetica-Bold")
+    blank_style = ParagraphStyle('BlankBox', parent=styles['Normal'], fontSize=9, leading=12)
 
     elements.append(Paragraph("Learning New Vocabulary", title_style))
     elements.append(Spacer(1, 10))
@@ -155,12 +136,8 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_forms, inc_families, inc
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
-word_count = st.sidebar.slider(
-    "Number of words to extract", min_value=1, max_value=8, value=5
-)
-target_year = st.sidebar.selectbox(
-    "Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"]
-)
+word_count = st.sidebar.slider("Number of words to extract", min_value=1, max_value=8, value=5)
+target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"])
 
 st.sidebar.header("2. Active Table Columns")
 inc_def = st.sidebar.checkbox("Definition", value=True)
@@ -177,4 +154,70 @@ if st.button("Generate Resource Grid", type="primary"):
     elif not api_key:
         st.error("Missing GEMINI_API_KEY in Streamlit Secrets.")
     else:
-        with st.
+        try:
+            vocab_data = extract_vocab(user_text, target_year, word_count)
+            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_forms, inc_families, inc_sketch)
+
+            st.markdown("---")
+            col_title, col_btn = st.columns([3, 1])
+            with col_title:
+                st.subheader("Learning New Vocabulary")
+            with col_btn:
+                st.download_button(
+                    label="📥 Download Printable PDF",
+                    data=pdf_buffer,
+                    file_name="Vocabulary_Worksheet.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+
+            for item in vocab_data:
+                w_name = item.get('word', '')
+                w_class = item.get('word_class', '')
+
+                active_cols = [("Key Word", True)]
+                if inc_def: 
+                    active_cols.append(("Definition", True))
+                if inc_sentence: 
+                    active_cols.append(("Example Sentence", True))
+                if inc_forms:
+                    active_cols.append(("Word Forms", True))
+                if inc_families: 
+                    active_cols.append(("Word Families", True))
+                if inc_sketch: 
+                    active_cols.append(("Space for Dual Coding", True))
+                
+                grid = st.columns(len(active_cols))
+                c_idx = 0
+
+                with grid[c_idx]:
+                    st.markdown(f"**Key Word**\n\n### {w_name}\n*({w_class})*")
+                c_idx += 1
+
+                if inc_def:
+                    with grid[c_idx]:
+                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                    c_idx += 1
+
+                if inc_sentence:
+                    with grid[c_idx]:
+                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                    c_idx += 1
+
+                if inc_forms:
+                    with grid[c_idx]:
+                        forms_val = item.get('word_forms', [])
+                        forms_out = ", ".join(forms_val) if isinstance(forms_val, list) else str(forms_val)
+                        st.markdown(f"**Word Forms**\n\n{forms_out}")
+                    c_idx += 1
+
+                if inc_families:
+                    with grid[c_idx]:
+                        fam_val = item.get('word_families', [])
+                        fam_out = ", ".join(fam_val) if isinstance(fam_val, list) else str(fam_val)
+                        st.markdown(f"**Word Families / Roots**\n\n{fam_out}")
+                    c_idx += 1
+
+                if inc_sketch:
+                    with grid[c_idx]:
+                        st.markdown("**Dual Coding Space**")
