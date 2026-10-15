@@ -1,8 +1,7 @@
 import streamlit as st
 import json
+import requests
 import io
-from google import genai
-from google.genai import types
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -13,10 +12,8 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. AGE-CALIBRATED CACHED TEXT ANALYSIS ---
-@st.cache_data(show_spinner=False)
-def extract_vocab_cached(text, target_year, word_count):
-    # Age range mapping for explicit UK secondary calibration
+# --- 1. AGE-CALIBRATED TEXT ANALYSIS ---
+def extract_vocab(text, target_year, word_count):
     age_map = {
         "Year 7": "ages 11-12",
         "Year 8": "ages 12-13",
@@ -34,21 +31,32 @@ def extract_vocab_cached(text, target_year, word_count):
         "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, related_words."
     )
     
-    # Initialize the Google GenAI Client with the key
-    client = genai.Client(api_key=api_key.strip())
+    # Standard REST fallback loop
+    models = ["gemini-2.5-flash", "gemini-3.5-flash-lite"]
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+    }
+
+    last_err = ""
+    clean_key = api_key.strip().replace('"', '').replace("'", "")
     
-    try:
-        response = client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.1,
-            ),
-        )
-        return json.loads(response.text)
-    except Exception as e:
-        raise Exception(f"API Failed: {str(e)}")
+    for model in models:
+        # Pass key in URL parameter
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
+        headers = {"Content-Type": "application/json"}
+        
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=12)
+            if res.status_code == 200:
+                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                return json.loads(raw_text)
+            else:
+                last_err = f"HTTP {res.status_code} ({res.text})"
+        except Exception as e:
+            last_err = str(e)
+
+    raise Exception(f"API Request Failed: {last_err}")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
 def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
@@ -98,7 +106,6 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
             r_str = ", ".join(r_val) if isinstance(r_val, list) else str(r_val)
             row.append(Paragraph(r_str, cell_style))
         if inc_sketch:
-            # Completely blank cell for student sketching
             row.append(Paragraph("<br/><br/><br/>", blank_style))
                 
         table_data.append(row)
@@ -119,9 +126,90 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
     buffer.seek(0)
     return buffer
 
-# --- 3. MAIN INTERFACE ---
+# --- 3. MAIN UI LAYOUT ---
 st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
 word_count = st.sidebar.slider("Number of words to extract", min_value=1, max_value=8, value=5)
-target_year = st.sidebar.selectbox
+target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"])
+
+st.sidebar.header("2. Active Table Columns")
+inc_def = st.sidebar.checkbox("Definition", value=True)
+inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
+inc_related = st.sidebar.checkbox("Related Words", value=True)
+inc_sketch = st.sidebar.checkbox("Space for Dual Coding", value=True)
+
+user_text = st.text_area("Paste Text Below", height=200)
+
+if st.button("Generate Resource Grid", type="primary"):
+    if not user_text.strip():
+        st.warning("Please paste a text passage before generating.")
+    elif not api_key:
+        st.error("Missing GEMINI_API_KEY in Streamlit Secrets.")
+    else:
+        with st.spinner("Extracting vocabulary..."):
+            try:
+                vocab_data = extract_vocab(user_text, target_year, word_count)
+                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch)
+
+                st.markdown("---")
+                col_title, col_btn = st.columns([3, 1])
+                with col_title:
+                    st.subheader("Learning New Vocabulary")
+                with col_btn:
+                    st.download_button(
+                        label="📥 Download Printable PDF",
+                        data=pdf_buffer,
+                        file_name="Vocabulary_Worksheet.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+
+                for item in vocab_data:
+                    w_name = item.get('word', '')
+                    w_class = item.get('word_class', '')
+
+                    active_cols = [("Key Word", True)]
+                    if inc_def: 
+                        active_cols.append(("Definition", True))
+                    if inc_sentence: 
+                        active_cols.append(("Example Sentence", True))
+                    if inc_related: 
+                        active_cols.append(("Related Words", True))
+                    if inc_sketch: 
+                        active_cols.append(("Space for Dual Coding", True))
+                    
+                    grid = st.columns(len(active_cols))
+                    c_idx = 0
+
+                    with grid[c_idx]:
+                        st.markdown(f"**Key Word**\n\n### {w_name}\n*({w_class})*")
+                    c_idx += 1
+
+                    if inc_def:
+                        with grid[c_idx]:
+                            st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                        c_idx += 1
+
+                    if inc_sentence:
+                        with grid[c_idx]:
+                            st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                        c_idx += 1
+
+                    if inc_related:
+                        with grid[c_idx]:
+                            rel_val = item.get('related_words', [])
+                            rel_out = ", ".join(rel_val) if isinstance(rel_val, list) else str(rel_val)
+                            st.markdown(f"**Related Words**\n\n{rel_out}")
+                        c_idx += 1
+
+                    if inc_sketch:
+                        with grid[c_idx]:
+                            st.markdown("**Dual Coding Space**")
+                            st.container(height=80, border=True)
+                        c_idx += 1
+
+                    st.divider()
+
+            except Exception as e:
+                st.error(f"Error generating resource: {e}")
