@@ -124,19 +124,4 @@ st.title("📚 Vocabulary Support Generator")
 
 st.sidebar.header("1. Target Options")
 word_count = st.sidebar.slider("Number of words to extract", min_value=1, max_value=8, value=5)
-target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"])
-
-st.sidebar.header("2. Active Table Columns")
-inc_def = st.sidebar.checkbox("Definition", value=True)
-inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
-inc_related = st.sidebar.checkbox("Related Words", value=True)
-inc_sketch = st.sidebar.checkbox("Space for Dual Coding", value=True)
-
-user_text = st.text_area("Paste Text Below", height=200)
-
-if st.button("Generate Resource Grid", type="primary"):
-    if not user_text.strip():
-        st.warning("Please paste a text passage before generating.")
-    else:
-        try:
-            vocab_data = extract
+target_year = st.sidebar.selectbox
