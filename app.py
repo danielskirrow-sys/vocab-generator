@@ -34,7 +34,6 @@ def extract_vocab_cached(text, target_year, word_count):
     )
     
     models = ["gemini-2.5-flash"]
-    headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
@@ -42,9 +41,16 @@ def extract_vocab_cached(text, target_year, word_count):
 
     last_err = ""
     for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        # AQ keys are passed strictly in the x-goog-api-key header
+        req_headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key.strip()
+        }
+        
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=8)
+            res = requests.post(url, headers=req_headers, json=payload, timeout=8)
             if res.status_code == 200:
                 raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
                 return json.loads(raw_text)
