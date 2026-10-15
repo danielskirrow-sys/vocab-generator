@@ -147,8 +147,9 @@ inc_families = st.sidebar.checkbox("Word Families & Roots", value=True)
 inc_sketch = st.sidebar.checkbox("Space for Dual Coding", value=True)
 
 user_text = st.text_area("Paste Text Below", height=200)
+generate_clicked = st.button("Generate Resource Grid", type="primary")
 
-if st.button("Generate Resource Grid", type="primary"):
+if generate_clicked:
     if not user_text.strip():
         st.warning("Please paste a text passage before generating.")
     elif not api_key:
@@ -160,64 +161,54 @@ if st.button("Generate Resource Grid", type="primary"):
 
             st.markdown("---")
             col_title, col_btn = st.columns([3, 1])
-            with col_title:
-                st.subheader("Learning New Vocabulary")
-            with col_btn:
-                st.download_button(
-                    label="📥 Download Printable PDF",
-                    data=pdf_buffer,
-                    file_name="Vocabulary_Worksheet.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
+            col_title.subheader("Learning New Vocabulary")
+            col_btn.download_button(
+                label="📥 Download Printable PDF",
+                data=pdf_buffer,
+                file_name="Vocabulary_Worksheet.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
 
             for item in vocab_data:
-                w_name = item.get('word', '')
-                w_class = item.get('word_class', '')
+                cols_count = 1
+                if inc_def: cols_count += 1
+                if inc_sentence: cols_count += 1
+                if inc_forms: cols_count += 1
+                if inc_families: cols_count += 1
+                if inc_sketch: cols_count += 1
 
-                active_cols = [("Key Word", True)]
-                if inc_def: 
-                    active_cols.append(("Definition", True))
-                if inc_sentence: 
-                    active_cols.append(("Example Sentence", True))
-                if inc_forms:
-                    active_cols.append(("Word Forms", True))
-                if inc_families: 
-                    active_cols.append(("Word Families", True))
-                if inc_sketch: 
-                    active_cols.append(("Space for Dual Coding", True))
-                
-                grid = st.columns(len(active_cols))
+                grid = st.columns(cols_count)
                 c_idx = 0
 
-                with grid[c_idx]:
-                    st.markdown(f"**Key Word**\n\n### {w_name}\n*({w_class})*")
+                grid[c_idx].markdown(f"**Key Word**\n\n### {item.get('word', '')}\n*({item.get('word_class', '')})*")
                 c_idx += 1
 
                 if inc_def:
-                    with grid[c_idx]:
-                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
+                    grid[c_idx].markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
                     c_idx += 1
 
                 if inc_sentence:
-                    with grid[c_idx]:
-                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
+                    grid[c_idx].markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
                     c_idx += 1
 
                 if inc_forms:
-                    with grid[c_idx]:
-                        forms_val = item.get('word_forms', [])
-                        forms_out = ", ".join(forms_val) if isinstance(forms_val, list) else str(forms_val)
-                        st.markdown(f"**Word Forms**\n\n{forms_out}")
+                    f_val = item.get('word_forms', [])
+                    f_out = ", ".join(f_val) if isinstance(f_val, list) else str(f_val)
+                    grid[c_idx].markdown(f"**Word Forms**\n\n{f_out}")
                     c_idx += 1
 
                 if inc_families:
-                    with grid[c_idx]:
-                        fam_val = item.get('word_families', [])
-                        fam_out = ", ".join(fam_val) if isinstance(fam_val, list) else str(fam_val)
-                        st.markdown(f"**Word Families / Roots**\n\n{fam_out}")
+                    fam_val = item.get('word_families', [])
+                    fam_out = ", ".join(fam_val) if isinstance(fam_val, list) else str(fam_val)
+                    grid[c_idx].markdown(f"**Word Families / Roots**\n\n{fam_out}")
                     c_idx += 1
 
                 if inc_sketch:
-                    with grid[c_idx]:
-                        st.markdown("**Dual Coding Space**")
+                    grid[c_idx].markdown("**Dual Coding Space**")
+                    c_idx += 1
+
+                st.divider()
+
+        except Exception as e:
+            st.error(f"Error generating resource: {e}")
