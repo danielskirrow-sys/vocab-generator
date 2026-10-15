@@ -28,10 +28,11 @@ def extract_vocab(text, target_year, word_count):
         f"Extract up to {word_count} target Tier 2 vocabulary words that represent an appropriate challenge, sitting just above the "
         f"independent reading level of a typical {target_year} pupil. "
         f"Write student-friendly definitions and example sentences using tone and vocabulary appropriate for {target_year} ({target_age}). "
-        "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, related_words."
+        f"For 'word_class_forms', list alternative word class forms of the target word (e.g., noun, verb, or adverb variants). "
+        f"For 'word_families', identify shared root words, prefixes, or morphologically linked terms (e.g., for 'insatiable', include 'satisfied, satiate, satisfaction'). "
+        "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, word_class_forms, word_families."
     )
     
-    # Standard REST fallback loop
     models = ["gemini-2.5-flash", "gemini-3.5-flash-lite"]
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -42,7 +43,6 @@ def extract_vocab(text, target_year, word_count):
     clean_key = api_key.strip().replace('"', '').replace("'", "")
     
     for model in models:
-        # Pass key in URL parameter
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         
@@ -59,7 +59,7 @@ def extract_vocab(text, target_year, word_count):
     raise Exception(f"API Request Failed: {last_err}")
 
 # --- 2. LANDSCAPE A4 PDF GENERATOR ---
-def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
+def generate_pdf(vocab_data, inc_def, inc_sentence, inc_forms, inc_families, inc_sketch):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -85,8 +85,10 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
         headers.append(Paragraph("Definition", header_style))
     if inc_sentence: 
         headers.append(Paragraph("Example Sentence", header_style))
-    if inc_related: 
-        headers.append(Paragraph("Related Words", header_style))
+    if inc_forms:
+        headers.append(Paragraph("Word Forms", header_style))
+    if inc_families: 
+        headers.append(Paragraph("Word Families & Roots", header_style))
     if inc_sketch: 
         headers.append(Paragraph("Dual Coding Space", header_style))
 
@@ -101,8 +103,12 @@ def generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch):
             row.append(Paragraph(item.get('definition', 'N/A'), cell_style))
         if inc_sentence:
             row.append(Paragraph(f"<i>{item.get('sentence', 'N/A')}</i>", cell_style))
-        if inc_related:
-            r_val = item.get('related_words', [])
+        if inc_forms:
+            f_val = item.get('word_class_forms', [])
+            f_str = ", ".join(f_val) if isinstance(f_val, list) else str(f_val)
+            row.append(Paragraph(f_str, cell_style))
+        if inc_families:
+            r_val = item.get('word_families', [])
             r_str = ", ".join(r_val) if isinstance(r_val, list) else str(r_val)
             row.append(Paragraph(r_str, cell_style))
         if inc_sketch:
@@ -136,7 +142,8 @@ target_year = st.sidebar.selectbox("Year", ["Year 7", "Year 8", "Year 9", "Year 
 st.sidebar.header("2. Active Table Columns")
 inc_def = st.sidebar.checkbox("Definition", value=True)
 inc_sentence = st.sidebar.checkbox("Example Sentence", value=True)
-inc_related = st.sidebar.checkbox("Related Words", value=True)
+inc_forms = st.sidebar.checkbox("Word Forms (Word Class)", value=True)
+inc_families = st.sidebar.checkbox("Word Families & Roots", value=True)
 inc_sketch = st.sidebar.checkbox("Space for Dual Coding", value=True)
 
 user_text = st.text_area("Paste Text Below", height=200)
@@ -150,7 +157,7 @@ if st.button("Generate Resource Grid", type="primary"):
         with st.spinner("Extracting vocabulary..."):
             try:
                 vocab_data = extract_vocab(user_text, target_year, word_count)
-                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch)
+                pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_forms, inc_families, inc_sketch)
 
                 st.markdown("---")
                 col_title, col_btn = st.columns([3, 1])
@@ -174,8 +181,10 @@ if st.button("Generate Resource Grid", type="primary"):
                         active_cols.append(("Definition", True))
                     if inc_sentence: 
                         active_cols.append(("Example Sentence", True))
-                    if inc_related: 
-                        active_cols.append(("Related Words", True))
+                    if inc_forms:
+                        active_cols.append(("Word Forms", True))
+                    if inc_families: 
+                        active_cols.append(("Word Families", True))
                     if inc_sketch: 
                         active_cols.append(("Space for Dual Coding", True))
                     
@@ -196,11 +205,18 @@ if st.button("Generate Resource Grid", type="primary"):
                             st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
                         c_idx += 1
 
-                    if inc_related:
+                    if inc_forms:
                         with grid[c_idx]:
-                            rel_val = item.get('related_words', [])
-                            rel_out = ", ".join(rel_val) if isinstance(rel_val, list) else str(rel_val)
-                            st.markdown(f"**Related Words**\n\n{rel_out}")
+                            forms_val = item.get('word_class_forms', [])
+                            forms_out = ", ".join(forms_val) if isinstance(forms_val, list) else str(forms_val)
+                            st.markdown(f"**Word Forms**\n\n{forms_out}")
+                        c_idx += 1
+
+                    if inc_families:
+                        with grid[c_idx]:
+                            fam_val = item.get('word_families', [])
+                            fam_out = ", ".join(fam_val) if isinstance(fam_val, list) else str(fam_val)
+                            st.markdown(f"**Word Families / Roots**\n\n{fam_out}")
                         c_idx += 1
 
                     if inc_sketch:
@@ -209,7 +225,7 @@ if st.button("Generate Resource Grid", type="primary"):
                             st.container(height=80, border=True)
                         c_idx += 1
 
-                    st.divider()
+                st.divider()
 
             except Exception as e:
                 st.error(f"Error generating resource: {e}")
