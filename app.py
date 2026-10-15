@@ -39,7 +39,7 @@ def extract_vocab_cached(text, target_year, word_count):
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -139,68 +139,4 @@ if st.button("Generate Resource Grid", type="primary"):
         st.warning("Please paste a text passage before generating.")
     else:
         try:
-            vocab_data = extract_vocab_cached(user_text, target_year, word_count)
-            pdf_buffer = generate_pdf(vocab_data, inc_def, inc_sentence, inc_related, inc_sketch)
-
-            st.markdown("---")
-            col_title, col_btn = st.columns([3, 1])
-            with col_title:
-                st.subheader("Learning New Vocabulary")
-            with col_btn:
-                st.download_button(
-                    label="📥 Download Printable PDF",
-                    data=pdf_buffer,
-                    file_name="Vocabulary_Worksheet.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
-
-            for item in vocab_data:
-                w_name = item.get('word', '')
-                w_class = item.get('word_class', '')
-
-                active_cols = [("Key Word", True)]
-                if inc_def: 
-                    active_cols.append(("Definition", True))
-                if inc_sentence: 
-                    active_cols.append(("Example Sentence", True))
-                if inc_related: 
-                    active_cols.append(("Related Words", True))
-                if inc_sketch: 
-                    active_cols.append(("Space for Dual Coding", True))
-                
-                grid = st.columns(len(active_cols))
-                c_idx = 0
-
-                with grid[c_idx]:
-                    st.markdown(f"**Key Word**\n\n### {w_name}\n*({w_class})*")
-                c_idx += 1
-
-                if inc_def:
-                    with grid[c_idx]:
-                        st.markdown(f"**Definition**\n\n{item.get('definition', 'N/A')}")
-                    c_idx += 1
-
-                if inc_sentence:
-                    with grid[c_idx]:
-                        st.markdown(f"**Example Sentence**\n\n*{item.get('sentence', 'N/A')}*")
-                    c_idx += 1
-
-                if inc_related:
-                    with grid[c_idx]:
-                        rel_val = item.get('related_words', [])
-                        rel_out = ", ".join(rel_val) if isinstance(rel_val, list) else str(rel_val)
-                        st.markdown(f"**Related Words**\n\n{rel_out}")
-                    c_idx += 1
-
-                if inc_sketch:
-                    with grid[c_idx]:
-                        st.markdown("**Dual Coding Space**")
-                        # Blank container box for visual UI preview
-                        st.container(height=80, border=True)
-                    c_idx += 1
-
-                st.divider()
-
-        except Exception as e:
-            st.error(f"Error generating resource: {e}")
+            vocab_data = extract
