@@ -13,9 +13,9 @@ st.set_page_config(page_title="Adaptation Station", page_icon="📚", layout="wi
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# Initialize active tool state
+# Ensure active tool state exists
 if "active_tool" not in st.session_state:
-    st.session_state.active_tool = None
+    st.session_state["active_tool"] = "home"
 
 
 # --- 1. SHARED API CASCADE ENGINE ---
@@ -173,8 +173,4 @@ def generate_word_bank_pdf(wb_data, task_type, target_band):
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=4)
-    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=10, leading=12, textColor=colors.HexColor("#555555"), spaceAfter=10)
-    cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8.5, leading=11)
-
-    elements.append(Paragraph("English Writing Word Bank", title_style))
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20,
