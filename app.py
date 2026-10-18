@@ -13,7 +13,7 @@ st.set_page_config(page_title="Adaptation Station", page_icon="📚", layout="wi
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# Initialize active tool in session state
+# Initialize active tool state
 if "active_tool" not in st.session_state:
     st.session_state.active_tool = None
 
@@ -174,4 +174,33 @@ def generate_word_bank_pdf(wb_data, task_type, target_band):
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=4)
-    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=10, leading=12, textColor=colors.HexColor
+    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=10, leading=12, textColor=colors.HexColor("#555555"), spaceAfter=10)
+    cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8.5, leading=11)
+
+    elements.append(Paragraph("English Writing Word Bank", title_style))
+    elements.append(Paragraph(f"<b>Focus:</b> {task_type} &nbsp;|&nbsp; <b>Level:</b> {target_band}", sub_style))
+
+    rows = []
+    current_row = []
+    for item in wb_data:
+        cell_text = (
+            f"<b><font size=7 color='#005b96'>{item.get('category', '').upper()}</font></b><br/>"
+            f"<b><font size=11 color='#111111'>{item.get('word', '')}</font></b> <i>({item.get('word_class', '')})</i><br/><br/>"
+            f"<b>Meaning:</b> {item.get('definition', '')}<br/>"
+            f"<b>Usage:</b> <i>\"{item.get('model_phrase', '')}\"</i>"
+        )
+        current_row.append(Paragraph(cell_text, cell_body))
+        if len(current_row) == 3:
+            rows.append(current_row)
+            current_row = []
+            
+    if current_row:
+        while len(current_row) < 3:
+            current_row.append(Paragraph("", cell_body))
+        rows.append(current_row)
+
+    t = Table(rows, colWidths=[260, 260, 260])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#fdfdfd")),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
