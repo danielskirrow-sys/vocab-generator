@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import requests
 import io
+import time
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -12,7 +13,7 @@ st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📚", 
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. AGE-CALIBRATED TEXT ANALYSIS ---
+# --- 1. AGE-CALIBRATED TEXT ANALYSIS WITH RESILIENT CASCADE ---
 def extract_vocab(text, target_year, word_count):
     age_map = {
         "Year 7": "ages 11-12",
@@ -33,7 +34,8 @@ def extract_vocab(text, target_year, word_count):
         "Return a JSON array where each object strictly contains keys: word, word_class, definition, sentence, word_forms, word_families."
     )
     
-    models = ["gemini-2.5-flash", "gemini-3.5-flash-lite"]
+    # Model cascade with fast fallback options
+    models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-1.5-flash"]
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
@@ -46,15 +48,22 @@ def extract_vocab(text, target_year, word_count):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         
-        try:
-            res = requests.post(url, headers=headers, json=payload, timeout=12)
-            if res.status_code == 200:
-                raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(raw_text)
-            else:
-                last_err = f"HTTP {res.status_code} ({res.text})"
-        except Exception as e:
-            last_err = str(e)
+        # Try up to 2 attempts per model to absorb temporary 503 high-demand spikes
+        for attempt in range(2):
+            try:
+                res = requests.post(url, headers=headers, json=payload, timeout=12)
+                if res.status_code == 200:
+                    raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(raw_text)
+                elif res.status_code == 503 and attempt == 0:
+                    time.sleep(1)  # Brief delay on 503 surge before retry
+                    continue
+                else:
+                    last_err = f"HTTP {res.status_code} ({res.text})"
+                    break  # Move to next model
+            except Exception as e:
+                last_err = str(e)
+                break
 
     raise Exception(f"API Request Failed: {last_err}")
 
