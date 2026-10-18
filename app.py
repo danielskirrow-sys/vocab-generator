@@ -13,7 +13,6 @@ st.set_page_config(page_title="Adaptation Station", page_icon="📚", layout="wi
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# Ensure active tool state exists
 if "active_tool" not in st.session_state:
     st.session_state["active_tool"] = "home"
 
@@ -143,34 +142,3 @@ def extract_word_bank(task_type, prompt_text, target_year, target_band, word_cou
         )
     elif task_type in ["Creative / Descriptive Writing", "Narrative Writing"]:
         category_guidance = (
-            "Organise the output strictly into 4 descriptive categories: "
-            "1. 'Sensory Details', 2. 'Atmospheric Adjectives', "
-            "3. 'Dynamic Verbs', 4. 'Figurative Openers'."
-        )
-    else:
-        category_guidance = (
-            "Organise the output strictly into 4 persuasive categories: "
-            "1. 'Rhetorical Connectives', 2. 'Emotive Nouns', "
-            "3. 'Persuasive Adverbs', 4. 'Counter-argument Markers'."
-        )
-
-    prompt = (
-        f"Act as an expert UK Secondary English teacher. Generate a writing word bank for {target_year} pupils "
-        f"working at {target_band}. Use UK English spelling strictly throughout (e.g., analyse, characterise, emphasise).\n\n"
-        f"Task Type: {task_type}\n"
-        f"Task Prompt/Context: '{prompt_text}'\n\n"
-        f"{category_guidance}\n\n"
-        f"Extract/generate exactly {word_count} target vocabulary words or academic phrases appropriate for this writing task. "
-        f"For each item, include: word, word_class, category, definition, and a short model_phrase illustrating its use in an English writing context.\n"
-        "Return a JSON array where each object strictly contains keys: word, word_class, category, definition, model_phrase."
-    )
-    return call_gemini_cascade(prompt)
-
-
-def generate_word_bank_pdf(wb_data, task_type, target_band):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20,
