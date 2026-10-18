@@ -204,3 +204,25 @@ def generate_word_bank_pdf(wb_data, task_type, target_band):
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#fdfdfd")),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('PADDING', (0, 0), (-1, -1), 8)
+    ]))
+    
+    elements.append(t)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+# --- 4. LANDING PAGE & ROUTING ---
+if st.session_state.active_tool is None:
+    st.write("<br/><br/>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        with st.container(border=True):
+            st.markdown("### 📖 Vocabulary Support Generator")
+            st.write("Extract key Tier 2 reading vocabulary from any text passage. Generates structured definition tables and dual-coding grids.")
+            st.write("")
+            if st.button("Launch Vocabulary Tool", type="primary", use_container_width=True, key="btn_launch_vocab"):
+                st.session_state.active_tool = "vocab"
+                st.
