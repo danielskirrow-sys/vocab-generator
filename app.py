@@ -57,7 +57,6 @@ def call_gemini_cascade(prompt):
 
 # --- 2. VOCABULARY EXTRACTOR PROMPT ENGINE ---
 def extract_vocabulary_support(passage_text, mandatory_words, target_year, target_band, word_count):
-    # Flightpath adjustment matrix mapping Year Group + Band to realistic pitch
     flightpath_map = {
         ("Year 7", "Developing (Grades 1-3)"): "Entry / Access Level (KS2 to KS3 bridge, highly grounded and clear vocabulary)",
         ("Year 7", "Reaching (Grades 4-6)"): "Year 7 Secure / Working towards GCSE Grade 2-3 (Accessible Tier 2 academic words, no overly complex Latinate terms)",
@@ -69,30 +68,4 @@ def extract_vocabulary_support(passage_text, mandatory_words, target_year, targe
         
         ("Year 9", "Developing (Grades 1-3)"): "Year 9 Foundation / GCSE Grade 2-3 equivalent",
         ("Year 9", "Reaching (Grades 4-6)"): "Year 9 Secure / GCSE Grade 4-5 equivalent",
-        ("Year 9", "Mastering (Grades 7-9)"): "Year 9 High Attainer / GCSE Grade 6-7 equivalent",
-
-        ("Year 10", "Developing (Grades 1-3)"): "GCSE Grades 1-3 Foundation",
-        ("Year 10", "Reaching (Grades 4-6)"): "GCSE Grades 4-6 Intermediate",
-        ("Year 10", "Mastering (Grades 7-9)"): "GCSE Grades 7-9 Higher Mastery",
-
-        ("Year 11", "Developing (Grades 1-3)"): "GCSE Grades 1-3 Foundation",
-        ("Year 11", "Reaching (Grades 4-6)"): "GCSE Grades 4-6 Intermediate",
-        ("Year 11", "Mastering (Grades 7-9)"): "GCSE Grades 7-9 Higher Mastery"
-    }
-
-    calibrated_level = flightpath_map.get((target_year, target_band), f"{target_year} {target_band}")
-
-    mandatory_instruction = ""
-    if mandatory_words.strip():
-        mandatory_instruction = (
-            f"\n\nMANDATORY REQUIREMENT: You MUST extract and include the following teacher-specified words/phrases "
-            f"if they appear in or relate to the text: '{mandatory_words}'."
-        )
-
-    prompt = (
-        f"Act as an expert UK Secondary English teacher. Analyse the following text and extract target vocabulary for {target_year} pupils "
-        f"calibrated strictly to this secondary flightpath standard: '{calibrated_level}'. Use UK English spelling strictly throughout (e.g., analyse, characterise, emphasise).\n\n"
-        f"STRICT PEDAGOGICAL GUIDELINES:\n"
-        f"- Focus on high-utility Tier 2 vocabulary that pupils need to comprehend this text or discuss it academically.\n"
-        f"- Do NOT select obscure, archaic, or unnecessarily pretension terms unless central to text comprehension.\n"
-        f"- Ensure definitions are concise, pupil-friendly, and
+        ("Year 9", "Mastering (Grades 7-9)"): "
