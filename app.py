@@ -75,7 +75,6 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
     cell_head = ParagraphStyle('CellHead', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.white, fontName="Helvetica-Bold")
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
-    draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#888888"))
 
     elements.append(Paragraph("Vocabulary Support Sheet", title_style))
     elements.append(Paragraph("<b>Target Group:</b> " + str(target_year), sub_style))
@@ -110,7 +109,7 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
         if inc_etym:
             row.append(Paragraph(str(item.get('etymology', '')), cell_body))
         if inc_dual_coding:
-            row.append(Paragraph("<i>Sketch icon here:</i>", draw_label))
+            row.append(Paragraph("", cell_body))
 
         table_data.append(row)
 
@@ -141,9 +140,9 @@ vocab_count = st.sidebar.slider("Number of Words", min_value=1, max_value=8, val
 st.sidebar.header("2. Display Fields")
 inc_def = st.sidebar.checkbox("Word Definition", value=True, key="cb_def")
 inc_example = st.sidebar.checkbox("Example Sentence", value=True, key="cb_example")
-inc_related = st.sidebar.checkbox("Related Words", value=True, key="cb_related")
+inc_related = st.sidebar.checkbox("Related Words", value=False, key="cb_related")
 inc_etym = st.sidebar.checkbox("Etymology", value=False, key="cb_etym")
-inc_dual_coding = st.sidebar.checkbox("Space for Dual Coding", value=True, key="cb_dual_coding")
+inc_dual_coding = st.sidebar.checkbox("Space for Dual Coding", value=False, key="cb_dual_coding")
 
 passage_input = st.text_area(
     "Paste Source Text Here", 
@@ -201,23 +200,4 @@ if st.session_state.vocab_data is not None:
 
         preview_data = []
         for item in st.session_state.vocab_data:
-            w_lbl = str(item.get('word', '')) + " (" + str(item.get('word_class', '')) + ")"
-            row_dict = {"Word & Class": w_lbl}
-            
-            if inc_def:
-                row_dict["Definition"] = item.get("definition", "")
-            if inc_example:
-                row_dict["Example Sentence"] = item.get("example_sentence", "")
-            if inc_related:
-                row_dict["Related Words"] = item.get("related_words", "")
-            if inc_etym:
-                row_dict["Etymology"] = item.get("etymology", "")
-            if inc_dual_coding:
-                row_dict["Dual Coding Space"] = "[ Sketch Space ]"
-
-            preview_data.append(row_dict)
-
-        st.table(preview_data)
-
-    except Exception as e:
-        st.error("Display Error: " + str(e))
+            w_lbl = str(item.get('word',
