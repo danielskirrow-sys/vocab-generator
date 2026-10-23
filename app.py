@@ -104,4 +104,10 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     for item in vocab_data:
         w_name = str(item.get('word', ''))
         w_class = str(item.get('word_class', ''))
-        row = [Paragraph("<b><font size=9>" + w_name + "</font></b><br/><i>(" + w_class + ")</i>", cell_body
+        w_html = "<b><font size=9>" + w_name + "</font></b><br/><i>(" + w_class + ")</i>"
+        row = [Paragraph(w_html, cell_body)]
+
+        if inc_def:
+            row.append(Paragraph(str(item.get('definition', '')), cell_body))
+        if inc_example:
+            ex_txt = "<i>\"" + str(item.get('example_sentence', '')) + "\"</i>"
