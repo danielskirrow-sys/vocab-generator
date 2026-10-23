@@ -31,7 +31,7 @@ def call_gemini_cascade(prompt):
     last_err = ""
 
     for model in models:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + clean_key
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         
         for attempt in range(2):
@@ -44,13 +44,13 @@ def call_gemini_cascade(prompt):
                     time.sleep(1)
                     continue
                 else:
-                    last_err = "HTTP " + str(res.status_code) + " (" + res.text + ")"
+                    last_err = f"HTTP {res.status_code} ({res.text})"
                     break
             except Exception as e:
                 last_err = str(e)
                 break
 
-    raise Exception("API Request Failed: " + last_err)
+    raise Exception(f"API Request Failed: {last_err}")
 
 
 # --- 2. VOCABULARY EXTRACTOR PROMPT ENGINE ---
@@ -68,16 +68,16 @@ def extract_vocabulary_support(passage_text, target_year, word_count, inc_def, i
     keys_str = ", ".join(req_keys)
 
     prompt = (
-        "Act as an expert UK Secondary English teacher. Analyse the text and extract up to " + str(word_count) + " "
-        "key Tier 2 vocabulary words for " + str(target_year) + " pupils. Use UK English spelling strictly throughout.\n\n"
-        "Source Text:\n'" + passage_text + "'\n\n"
-        "Return a JSON array where each object strictly contains these keys: " + keys_str + "."
+        f"Act as an expert UK Secondary English teacher. Analyse the provided source text and extract up to {word_count} "
+        f"key Tier 2 vocabulary words suitable for {target_year} pupils. Use UK English spelling strictly throughout.\n\n"
+        f"Source Text:\n'{passage_text}'\n\n"
+        f"Return a JSON array where each object strictly contains these keys: {keys_str}."
     )
     return call_gemini_cascade(prompt)
 
 
 def replace_single_vocab_word(rejected_word, passage_text, target_year, current_words, inc_def, inc_example, inc_related, inc_etym):
-    existing_list = ", ".join([w.get('word', '') for w in current_words if w.get('word')])
+    existing_list = ", ".join([w.get("word", "") for w in current_words if w.get("word")])
     req_keys = ["word", "word_class"]
     if inc_def:
         req_keys.append("definition")
@@ -91,12 +91,15 @@ def replace_single_vocab_word(rejected_word, passage_text, target_year, current_
     keys_str = ", ".join(req_keys)
 
     prompt = (
-        "Act as an expert UK Secondary English teacher. Generate 1 replacement target vocabulary item from or relevant to this text "
-        "for " + str(target_year) + " pupils. Replace: '" + str(rejected_word) + "'. Do NOT generate any of: " + existing_list + ".\n"
-        "Context: '" + passage_text + "'\n"
-        "Return JSON array with EXACTLY ONE object containing keys: " + keys_str + "."
+        f"Act as an expert UK Secondary English teacher. Generate 1 replacement target vocabulary item from or relevant to this text "
+        f"for {target_year} pupils. Replace: '{rejected_word}'. Do NOT generate any of: {existing_list}.\n\n"
+        f"Source Text:\n'{passage_text}'\n\n"
+        f"Return JSON array with EXACTLY ONE object containing keys: {keys_str}."
     )
-    return call_gemini_cascade(prompt)
+    res = call_gemini_cascade(prompt)
+    if isinstance(res, list) and len(res) > 0:
+        return res[0]
+    return None
 
 
 # --- 3. LANDSCAPE A4 PDF GENERATOR ---
@@ -110,3 +113,67 @@ def generate_vocab_pdf(vocab_data, text_title, target_year, inc_def, inc_example
     sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
     draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#777777"))
+
+    doc_label = f"Vocabulary Support Sheet: {text_title}" if text_title else "Vocabulary Support Sheet"
+    elements.append(Paragraph(doc_label, title_style))
+    elements.append(Paragraph(f"<b>Target Group:</b> {target_year}", sub_style))
+
+    rows = []
+    current_row = []
+    for item in vocab_data:
+        w_name = item.get('word', '')
+        w_class = item.get('word_class', '')
+
+        cell_text = f"<b><font size=10 color='#111111'>{w_name}</font></b> <i>({w_class})</i><br/>"
+        
+        if inc_def and item.get('definition'):
+            cell_text += f"<b>Definition:</b> {item.get('definition')}<br/>"
+        if inc_example and item.get('example_sentence'):
+            cell_text += f"<b>Example:</b> <i>\"{item.get('example_sentence')}\"</i><br/>"
+        if inc_related and item.get('related_words'):
+            cell_text += f"<b>Related Words:</b> {item.get('related_words')}<br/>"
+        if inc_etym and item.get('etymology'):
+            cell_text += f"<b>Etymology:</b> {item.get('etymology')}<br/>"
+
+        cell_elements = [Paragraph(cell_text, cell_body)]
+
+        if inc_dual_coding:
+            cell_elements.append(Spacer(1, 4))
+            draw_box = Table([[Paragraph("<i>Space for dual coding (sketch / icon):</i>", draw_label)]], colWidths=[240], rowHeights=[38])
+            draw_box.setStyle(TableStyle([
+                ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#fafafa")),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('PADDING', (0, 0), (-1, -1), 3)
+            ]))
+            cell_elements.append(draw_box)
+
+        current_row.append(cell_elements)
+        if len(current_row) == 3:
+            rows.append(current_row)
+            current_row = []
+
+    if current_row:
+        while len(current_row) < 3:
+            current_row.append([Paragraph("", cell_body)])
+        rows.append(current_row)
+
+    t = Table(rows, colWidths=[260, 260, 260])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#fdfdfd")),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('PADDING', (0, 0), (-1, -1), 6)
+    ]))
+    elements.append(t)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+# --- 4. USER INTERFACE ---
+st.title("📖 Vocabulary Support Generator")
+
+st.sidebar.header("1. Options")
+vocab_year = st.sidebar.selectbox
