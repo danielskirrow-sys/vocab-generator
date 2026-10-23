@@ -9,11 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-st.set_page_config(
-    page_title="Vocabulary Support Generator", 
-    page_icon="📖", 
-    layout="wide"
-)
+st.set_page_config(page_title="Vocabulary Support Generator", page_icon="📖", layout="wide")
 
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
@@ -22,38 +18,18 @@ if "vocab_data" not in st.session_state:
 
 
 def call_gemini_cascade(prompt):
-    models = [
-        "gemini-2.5-flash", 
-        "gemini-3.5-flash-lite", 
-        "gemini-3.8-flash"
-    ]
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "response_mime_type": "application/json", 
-            "temperature": 0.1
-        }
-    }
+    models = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}}
     clean_key = api_key.strip().replace('"', '').replace("'", "")
     last_err = ""
 
     for model in models:
-        url = (
-            """https://generativelanguage.googleapis.com/v1beta/models/"""
-            + model 
-            + """:generateContent?key=""" 
-            + clean_key
-        )
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + clean_key
         headers = {"Content-Type": "application/json"}
         
         for attempt in range(2):
             try:
-                res = requests.post(
-                    url, 
-                    headers=headers, 
-                    json=payload, 
-                    timeout=12
-                )
+                res = requests.post(url, headers=headers, json=payload, timeout=12)
                 if res.status_code == 200:
                     raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
                     return json.loads(raw_text)
@@ -61,24 +37,16 @@ def call_gemini_cascade(prompt):
                     time.sleep(1)
                     continue
                 else:
-                    last_err = """HTTP """ + str(res.status_code) + """ (""" + res.text + """)"""
+                    last_err = "HTTP " + str(res.status_code) + " (" + res.text + ")"
                     break
             except Exception as e:
                 last_err = str(e)
                 break
 
-    raise Exception("""API Request Failed: """ + last_err)
+    raise Exception("API Request Failed: " + last_err)
 
 
-def extract_vocabulary_support(
-    passage_text, 
-    target_year, 
-    word_count, 
-    inc_def, 
-    inc_example, 
-    inc_related, 
-    inc_etym
-):
+def extract_vocabulary_support(passage_text, target_year, word_count, inc_def, inc_example, inc_related, inc_etym):
     req_keys = ["word", "word_class"]
     if inc_def:
         req_keys.append("definition")
@@ -90,110 +58,136 @@ def extract_vocabulary_support(
         req_keys.append("etymology")
 
     keys_str = ", ".join(req_keys)
-    
-    prompt = f"""Act as an expert UK Secondary English teacher. Analyse the provided source text and extract up to {word_count} key Tier 2 vocabulary words suitable for {target_year} pupils. Use UK English spelling strictly throughout.
-
-Source Text:
-'{passage_text}'
-
-Return a JSON array where each object strictly contains these keys: {keys_str}."""
-
+    prompt = "Act as an expert UK Secondary English teacher. Analyse the provided source text and extract up to " + str(word_count) + " key Tier 2 vocabulary words suitable for " + str(target_year) + " pupils. Use UK English spelling strictly throughout.\n\nSource Text:\n'" + passage_text + "'\n\nReturn a JSON array where each object strictly contains these keys: " + keys_str + "."
     return call_gemini_cascade(prompt)
 
 
-def generate_vocab_pdf(
-    vocab_data, 
-    target_year, 
-    inc_def, 
-    inc_example, 
-    inc_related, 
-    inc_etym, 
-    inc_dual_coding
-):
+def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_related, inc_etym, inc_dual_coding):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, 
-        pagesize=landscape(A4), 
-        rightMargin=20, 
-        leftMargin=20, 
-        topMargin=20, 
-        bottomMargin=20
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     elements = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'DocTitle', 
-        parent=styles['Heading1'], 
-        fontSize=16, 
-        leading=20, 
-        spaceAfter=2
-    )
-    sub_style = ParagraphStyle(
-        'DocSub', 
-        parent=styles['Normal'], 
-        fontSize=9, 
-        leading=11, 
-        textColor=colors.HexColor("#555555"), 
-        spaceAfter=10
-    )
-    cell_head = ParagraphStyle(
-        'CellHead', 
-        parent=styles['Normal'], 
-        fontSize=9, 
-        leading=11, 
-        textColor=colors.white, 
-        fontName="Helvetica-Bold"
-    )
-    cell_body = ParagraphStyle(
-        'CellBody', 
-        parent=styles['Normal'], 
-        fontSize=8, 
-        leading=10
-    )
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, spaceAfter=2)
+    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
+    cell_head = ParagraphStyle('CellHead', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.white, fontName="Helvetica-Bold")
+    cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
 
-    elements.append(Paragraph("""Vocabulary Support Sheet""", title_style))
-    target_str = f"""<b>Target Group:</b> {target_year}"""
-    elements.append(Paragraph(target_str, sub_style))
+    elements.append(Paragraph("Vocabulary Support Sheet", title_style))
+    elements.append(Paragraph("<b>Target Group:</b> " + str(target_year), sub_style))
 
-    h1 = """<b>Word & Class</b>"""
-    h2 = """<b>Definition</b>"""
-    h3 = """<b>Example Sentence</b>"""
-    h4 = """<b>Related Words</b>"""
-    h5 = """<b>Etymology</b>"""
-    h6 = """<b>Dual Coding</b>"""
-
-    headers = [Paragraph(h1, cell_head)]
+    headers = [Paragraph("<b>Word & Class</b>", cell_head)]
     if inc_def:
-        headers.append(Paragraph(h2, cell_head))
+        headers.append(Paragraph("<b>Definition</b>", cell_head))
     if inc_example:
-        headers.append(Paragraph(h3, cell_head))
+        headers.append(Paragraph("<b>Example Sentence</b>", cell_head))
     if inc_related:
-        headers.append(Paragraph(h4, cell_head))
+        headers.append(Paragraph("<b>Related Words</b>", cell_head))
     if inc_etym:
-        headers.append(Paragraph(h5, cell_head))
+        headers.append(Paragraph("<b>Etymology</b>", cell_head))
     if inc_dual_coding:
-        headers.append(Paragraph(h6, cell_head))
+        headers.append(Paragraph("<b>Dual Coding</b>", cell_head))
 
     table_data = [headers]
 
     for item in vocab_data:
         w_name = str(item.get('word', ''))
         w_class = str(item.get('word_class', ''))
-        w_html = f"""<b><font size=9>{w_name}</font></b><br/><i>({w_class})</i>"""
+        w_html = "<b><font size=9>" + w_name + "</font></b><br/><i>(" + w_class + ")</i>"
         row = [Paragraph(w_html, cell_body)]
 
         if inc_def:
             row.append(Paragraph(str(item.get('definition', '')), cell_body))
         if inc_example:
-            ex_val = str(item.get('example_sentence', ''))
-            ex_txt = f"""<i>"{ex_val}"</i>"""
+            ex_txt = "<i>\"" + str(item.get('example_sentence', '')) + "\"</i>"
             row.append(Paragraph(ex_txt, cell_body))
         if inc_related:
             row.append(Paragraph(str(item.get('related_words', '')), cell_body))
         if inc_etym:
             row.append(Paragraph(str(item.get('etymology', '')), cell_body))
         if inc_dual_coding:
-            row.append(Paragraph("""""", cell_body))
+            row.append(Paragraph("", cell_body))
 
-        table_data.append
+        table_data.append(row)
+
+    num_cols = len(headers)
+    col_widths = [750 / num_cols] * num_cols
+
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2C3E50")),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9F9F9")])
+    ]))
+    elements.append(t)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+st.title("📖 Vocabulary Support Generator")
+
+st.sidebar.header("1. Options")
+vocab_year = st.sidebar.selectbox("Target Year Group", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"], index=2, key="vocab_year_select")
+vocab_count = st.sidebar.slider("Number of Words", min_value=1, max_value=8, value=5, key="vocab_count_slider")
+
+st.sidebar.header("2. Display Fields")
+inc_def = st.sidebar.checkbox("Word Definition", value=True, key="cb_def")
+inc_example = st.sidebar.checkbox("Example Sentence", value=True, key="cb_example")
+inc_related = st.sidebar.checkbox("Related Words", value=False, key="cb_related")
+inc_etym = st.sidebar.checkbox("Etymology", value=False, key="cb_etym")
+inc_dual_coding = st.sidebar.checkbox("Space for Dual Coding", value=False, key="cb_dual_coding")
+
+passage_input = st.text_area("Paste Source Text Here", placeholder="Paste the passage or extract here to generate vocabulary support...", height=240, key="vocab_passage_input")
+
+generate_vocab = st.button("Generate Vocabulary Support Grid", type="primary", key="vocab_generate_btn", use_container_width=True)
+
+if generate_vocab:
+    if not passage_input.strip():
+        st.warning("Please paste a source text.")
+    elif not api_key:
+        st.error("Missing GEMINI_API_KEY in Streamlit Secrets.")
+    else:
+        with st.spinner("Generating..."):
+            try:
+                data = extract_vocabulary_support(passage_input, vocab_year, vocab_count, inc_def, inc_example, inc_related, inc_etym)
+                st.session_state.vocab_data = data
+            except Exception as e:
+                st.error("Error generating resource: " + str(e))
+
+if st.session_state.vocab_data is not None:
+    try:
+        vocab_pdf = generate_vocab_pdf(st.session_state.vocab_data, vocab_year, inc_def, inc_example, inc_related, inc_etym, inc_dual_coding)
+
+        st.markdown("---")
+        col_title, col_btn = st.columns([3, 1])
+        col_title.subheader("Generated Vocabulary Table")
+        col_btn.download_button(label="📥 Download Printable PDF (A4 Table)", data=vocab_pdf, file_name="Vocabulary_Support_Sheet.pdf", mime="application/pdf", type="primary", key="dl_vocab_pdf")
+
+        preview_data = []
+        for item in st.session_state.vocab_data:
+            w = str(item.get('word', ''))
+            c = str(item.get('word_class', ''))
+            w_lbl = w + " (" + c + ")"
+            row_dict = {"Word & Class": w_lbl}
+            
+            if inc_def:
+                row_dict["Definition"] = str(item.get("definition", ""))
+            if inc_example:
+                row_dict["Example Sentence"] = str(item.get("example_sentence", ""))
+            if inc_related:
+                row_dict["Related Words"] = str(item.get("related_words", ""))
+            if inc_etym:
+                row_dict["Etymology"] = str(item.get("etymology", ""))
+            if inc_dual_coding:
+                row_dict["Dual Coding Space"] = ""
+
+            preview_data.append(row_dict)
+
+        st.table(preview_data)
+
+    except Exception as e:
+        st.error("Display Error: " + str(e))
