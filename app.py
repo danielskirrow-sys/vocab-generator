@@ -31,7 +31,7 @@ def call_gemini_cascade(prompt):
     last_err = ""
 
     for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + clean_key
         headers = {"Content-Type": "application/json"}
         
         for attempt in range(2):
@@ -44,13 +44,13 @@ def call_gemini_cascade(prompt):
                     time.sleep(1)
                     continue
                 else:
-                    last_err = f"HTTP {res.status_code} ({res.text})"
+                    last_err = "HTTP " + str(res.status_code) + " (" + res.text + ")"
                     break
             except Exception as e:
                 last_err = str(e)
                 break
 
-    raise Exception(f"API Request Failed: {last_err}")
+    raise Exception("API Request Failed: " + last_err)
 
 
 # --- 2. VOCABULARY EXTRACTOR PROMPT ENGINE ---
@@ -68,10 +68,10 @@ def extract_vocabulary_support(passage_text, target_year, word_count, inc_def, i
     keys_str = ", ".join(req_keys)
 
     prompt = (
-        f"Act as an expert UK Secondary English teacher. Analyse the text and extract up to {word_count} "
-        f"key Tier 2 vocabulary words for {target_year} pupils. Use UK English spelling strictly throughout.\n\n"
-        f"Source Text:\n'{passage_text}'\n\n"
-        f"Return a JSON array where each object strictly contains these keys: {keys_str}."
+        "Act as an expert UK Secondary English teacher. Analyse the text and extract up to " + str(word_count) + " "
+        "key Tier 2 vocabulary words for " + str(target_year) + " pupils. Use UK English spelling strictly throughout.\n\n"
+        "Source Text:\n'" + passage_text + "'\n\n"
+        "Return a JSON array where each object strictly contains these keys: " + keys_str + "."
     )
     return call_gemini_cascade(prompt)
 
@@ -91,10 +91,10 @@ def replace_single_vocab_word(rejected_word, passage_text, target_year, current_
     keys_str = ", ".join(req_keys)
 
     prompt = (
-        f"Act as an expert UK Secondary English teacher. Generate 1 replacement target vocabulary item from or relevant to this text "
-        f"for {target_year} pupils. Replace: '{rejected_word}'. Do NOT generate any of: {existing_list}.\n"
-        f"Context: '{passage_text}'\n"
-        f"Return JSON array with EXACTLY ONE object containing keys: {keys_str}."
+        "Act as an expert UK Secondary English teacher. Generate 1 replacement target vocabulary item from or relevant to this text "
+        "for " + str(target_year) + " pupils. Replace: '" + str(rejected_word) + "'. Do NOT generate any of: " + existing_list + ".\n"
+        "Context: '" + passage_text + "'\n"
+        "Return JSON array with EXACTLY ONE object containing keys: " + keys_str + "."
     )
     return call_gemini_cascade(prompt)
 
@@ -110,18 +110,3 @@ def generate_vocab_pdf(vocab_data, text_title, target_year, inc_def, inc_example
     sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
     draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#777777"))
-
-    doc_label = f"Vocabulary Support Sheet: {text_title}" if text_title else "Vocabulary Support Sheet"
-    elements.append(Paragraph(doc_label, title_style))
-    elements.append(Paragraph(f"<b>Target Group:</b> {target_year}", sub_style))
-
-    rows = []
-    current_row = []
-    for item in vocab_data:
-        w_name = item.get('word', '')
-        w_class = item.get('word_class', '')
-
-        cell_text = f"<b><font size=10 color='#111111'>{w_name}</font></b> <i>({w_class})</i><br/>"
-        
-        if inc_def and item.get('definition'):
-            cell_text += f"<b>Definition:</b> {
