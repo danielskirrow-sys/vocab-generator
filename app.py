@@ -77,12 +77,44 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
 
     elements.append(Paragraph("Vocabulary Support Sheet", title_style))
-    
     target_str = "<b>Target Group:</b> " + str(target_year)
     elements.append(Paragraph(target_str, sub_style))
 
-    headers = [Paragraph("<b>Word & Class</b>", cell_head)]
+    h1 = "<b>Word & Class</b>"
+    h2 = "<b>Definition</b>"
+    h3 = "<b>Example Sentence</b>"
+    h4 = "<b>Related Words</b>"
+    h5 = "<b>Etymology</b>"
+    h6 = "<b>Dual Coding</b>"
+
+    headers = [Paragraph(h1, cell_head)]
     if inc_def:
-        headers.append(Paragraph("<b>Definition</b>", cell_head))
+        headers.append(Paragraph(h2, cell_head))
     if inc_example:
-        headers.append(Paragraph("
+        headers.append(Paragraph(h3, cell_head))
+    if inc_related:
+        headers.append(Paragraph(h4, cell_head))
+    if inc_etym:
+        headers.append(Paragraph(h5, cell_head))
+    if inc_dual_coding:
+        headers.append(Paragraph(h6, cell_head))
+
+    table_data = [headers]
+
+    for item in vocab_data:
+        w_name = str(item.get('word', ''))
+        w_class = str(item.get('word_class', ''))
+        w_html = "<b><font size=9>" + w_name + "</font></b><br/><i>(" + w_class + ")</i>"
+        row = [Paragraph(w_html, cell_body)]
+
+        if inc_def:
+            row.append(Paragraph(str(item.get('definition', '')), cell_body))
+        if inc_example:
+            ex_txt = "<i>\"" + str(item.get('example_sentence', '')) + "\"</i>"
+            row.append(Paragraph(ex_txt, cell_body))
+        if inc_related:
+            row.append(Paragraph(str(item.get('related_words', '')), cell_body))
+        if inc_etym:
+            row.append(Paragraph(str(item.get('etymology', '')), cell_body))
+        if inc_dual_coding:
+            row
