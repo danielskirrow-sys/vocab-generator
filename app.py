@@ -175,5 +175,119 @@ def generate_vocab_pdf(vocab_data, text_title, target_year, inc_def, inc_example
 # --- 4. USER INTERFACE ---
 st.title("📖 Vocabulary Support Generator")
 
+# Sidebar Controls
 st.sidebar.header("1. Options")
-vocab_year = st.sidebar.selectbox
+vocab_year = st.sidebar.selectbox("Target Year Group", ["Year 7", "Year 8", "Year 9", "Year 10", "Year 11"], index=2, key="vocab_year_select")
+vocab_count = st.sidebar.slider("Number of Words", min_value=6, max_value=18, value=12, key="vocab_count_slider")
+
+st.sidebar.header("2. Display Fields")
+inc_def = st.sidebar.checkbox("Word Definition", value=True, key="cb_def")
+inc_example = st.sidebar.checkbox("Example Sentence", value=True, key="cb_example")
+inc_related = st.sidebar.checkbox("Related Words", value=True, key="cb_related")
+inc_etym = st.sidebar.checkbox("Etymology", value=False, key="cb_etym")
+inc_dual_coding = st.sidebar.checkbox("Space for Dual Coding", value=True, key="cb_dual_coding")
+
+# Main Area Inputs
+text_title_input = st.text_input("Text / Topic Title (Optional)", placeholder="e.g. Macbeth Act 1 Scene 2", key="vocab_title_input")
+
+passage_input = st.text_area(
+    "Paste Source Text Here", 
+    placeholder="Paste the passage or extract here to generate vocabulary support...",
+    height=220,
+    key="vocab_passage_input"
+)
+
+generate_vocab = st.button("Generate Vocabulary Support Grid", type="primary", key="vocab_generate_btn", use_container_width=True)
+
+# Generate Button Action
+if generate_vocab:
+    if not passage_input.strip():
+        st.warning("Please paste a source text.")
+    elif not api_key:
+        st.error("Missing GEMINI_API_KEY in Streamlit Secrets.")
+    else:
+        with st.spinner("Generating..."):
+            try:
+                data = extract_vocabulary_support(
+                    passage_input, 
+                    vocab_year, 
+                    vocab_count,
+                    inc_def,
+                    inc_example,
+                    inc_related,
+                    inc_etym
+                )
+                st.session_state.vocab_data = data
+                st.session_state.text_title = text_title_input
+            except Exception as e:
+                st.error(f"Error generating resource: {e}")
+
+# Display Web Grid & Download PDF
+if st.session_state.vocab_data is not None:
+    try:
+        vocab_pdf = generate_vocab_pdf(
+            st.session_state.vocab_data, 
+            st.session_state.text_title, 
+            vocab_year,
+            inc_def,
+            inc_example,
+            inc_related,
+            inc_etym,
+            inc_dual_coding
+        )
+
+        st.markdown("---")
+        col_title, col_btn = st.columns([3, 1])
+        col_title.subheader("Generated Vocabulary Support Grid")
+        col_btn.download_button(
+            label="📥 Download Printable PDF (A4)",
+            data=vocab_pdf,
+            file_name="Vocabulary_Support_Sheet.pdf",
+            mime="application/pdf",
+            type="primary",
+            key="dl_vocab_pdf"
+        )
+
+        cols = st.columns(3)
+        for idx, item in enumerate(st.session_state.vocab_data):
+            with cols[idx % 3]:
+                with st.container(border=True):
+                    st.subheader(item.get('word', ''))
+                    st.caption(f"*({item.get('word_class', '')})*")
+                    
+                    if inc_def and item.get('definition'):
+                        st.write(f"**Definition:** {item.get('definition')}")
+                    if inc_example and item.get('example_sentence'):
+                        st.write(f"**Example:** *\"{item.get('example_sentence')}\"*")
+                    if inc_related and item.get('related_words'):
+                        st.write(f"**Related Words:** {item.get('related_words')}")
+                    if inc_etym and item.get('etymology'):
+                        st.write(f"**Etymology:** {item.get('etymology')}")
+
+                    if inc_dual_coding:
+                        st.caption("✏️ *Space for Dual Coding included on PDF*")
+
+                    btn_key = f"replace_vocab_{item.get('word', '')}_{idx}"
+                    if st.button("🔄 Replace Word", key=btn_key, use_container_width=True):
+                        with st.spinner("Replacing..."):
+                            try:
+                                replacement = replace_single_vocab_word(
+                                    item.get('word', ''),
+                                    passage_input,
+                                    vocab_year,
+                                    st.session_state.vocab_data,
+                                    inc_def,
+                                    inc_example,
+                                    inc_related,
+                                    inc_etym
+                                )
+                                if replacement:
+                                    for orig_idx, orig_item in enumerate(st.session_state.vocab_data):
+                                        if orig_item.get('word') == item.get('word'):
+                                            st.session_state.vocab_data[orig_idx] = replacement
+                                            break
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Could not replace word: {e}")
+    except Exception as e:
+        st.error(f"Display Error: {e}")
