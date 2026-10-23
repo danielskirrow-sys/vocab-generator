@@ -55,50 +55,73 @@ def call_gemini_cascade(prompt):
 
 # --- 2. VOCABULARY EXTRACTOR PROMPT ENGINE ---
 def extract_vocabulary_support(passage_text, target_year, word_count, inc_def, inc_example, inc_related, inc_etym):
-    fields = []
+    req_keys = ["word", "word_class"]
     if inc_def:
-        fields.append("'definition' (short pupil-friendly meaning)")
+        req_keys.append("definition")
     if inc_example:
-        fields.append("'example_sentence' (contextual sentence illustrating usage)")
+        req_keys.append("example_sentence")
     if inc_related:
-        fields.append("'related_words' (synonyms or word family forms)")
+        req_keys.append("related_words")
     if inc_etym:
-        fields.append("'etymology' (root word origin or prefix/suffix breakdown)")
+        req_keys.append("etymology")
 
-    fields_req = ", ".join(fields)
-    
+    keys_str = ", ".join(req_keys)
+
     prompt = (
-        f"Act as an expert UK Secondary English teacher. Analyse the provided text and extract up to {word_count} "
-        f"key Tier 2 vocabulary words suitable for {target_year} pupils. Use UK English spelling strictly throughout.\n\n"
+        f"Act as an expert UK Secondary English teacher. Analyse the text and extract up to {word_count} "
+        f"key Tier 2 vocabulary words for {target_year} pupils. Use UK English spelling strictly throughout.\n\n"
         f"Source Text:\n'{passage_text}'\n\n"
-        f"For each word extracted, provide: 'word', 'word_class', plus the following requested fields: {fields_req}.\n"
-        f"Return a JSON array where each object strictly contains keys: word, word_class"
+        f"Return a JSON array where each object strictly contains these keys: {keys_str}."
     )
-    
-    if inc_def:
-        prompt += ", definition"
-    if inc_example:
-        prompt += ", example_sentence"
-    if inc_related:
-        prompt += ", related_words"
-    if inc_etym:
-        prompt += ", etymology"
-
     return call_gemini_cascade(prompt)
 
 
 def replace_single_vocab_word(rejected_word, passage_text, target_year, current_words, inc_def, inc_example, inc_related, inc_etym):
     existing_list = ", ".join([w.get('word', '') for w in current_words if w.get('word')])
-    
+    req_keys = ["word", "word_class"]
+    if inc_def:
+        req_keys.append("definition")
+    if inc_example:
+        req_keys.append("example_sentence")
+    if inc_related:
+        req_keys.append("related_words")
+    if inc_etym:
+        req_keys.append("etymology")
+
+    keys_str = ", ".join(req_keys)
+
     prompt = (
         f"Act as an expert UK Secondary English teacher. Generate 1 replacement target vocabulary item from or relevant to this text "
         f"for {target_year} pupils. Replace: '{rejected_word}'. Do NOT generate any of: {existing_list}.\n"
         f"Context: '{passage_text}'\n"
-        f"Return JSON array with EXACTLY ONE object containing keys: word, word_class"
+        f"Return JSON array with EXACTLY ONE object containing keys: {keys_str}."
     )
-    if inc_def:
-        prompt += ", definition"
-    if inc_example:
-        prompt += ", example_sentence"
-    if inc_related:
-        prompt +=
+    return call_gemini_cascade(prompt)
+
+
+# --- 3. LANDSCAPE A4 PDF GENERATOR ---
+def generate_vocab_pdf(vocab_data, text_title, target_year, inc_def, inc_example, inc_related, inc_etym, inc_dual_coding):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=15, leading=18, spaceAfter=2)
+    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
+    cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
+    draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#777777"))
+
+    doc_label = f"Vocabulary Support Sheet: {text_title}" if text_title else "Vocabulary Support Sheet"
+    elements.append(Paragraph(doc_label, title_style))
+    elements.append(Paragraph(f"<b>Target Group:</b> {target_year}", sub_style))
+
+    rows = []
+    current_row = []
+    for item in vocab_data:
+        w_name = item.get('word', '')
+        w_class = item.get('word_class', '')
+
+        cell_text = f"<b><font size=10 color='#111111'>{w_name}</font></b> <i>({w_class})</i><br/>"
+        
+        if inc_def and item.get('definition'):
+            cell_text += f"<b>Definition:</b> {
