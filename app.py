@@ -77,4 +77,12 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
 
     elements.append(Paragraph("Vocabulary Support Sheet", title_style))
-    elements.append(Paragraph("<b>Target Group:</b> " + str(
+    
+    target_str = "<b>Target Group:</b> " + str(target_year)
+    elements.append(Paragraph(target_str, sub_style))
+
+    headers = [Paragraph("<b>Word & Class</b>", cell_head)]
+    if inc_def:
+        headers.append(Paragraph("<b>Definition</b>", cell_head))
+    if inc_example:
+        headers.append(Paragraph("
