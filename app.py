@@ -87,5 +87,4 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
     draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#888888"))
 
-    elements.append(Paragraph("Vocabulary Support Sheet", title_style))
-    elements.append(Paragraph(f"<b>Target Group:</b> {target_year}", sub_style
+    elements.append(Paragraph("Vocabulary
