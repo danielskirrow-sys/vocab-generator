@@ -101,42 +101,4 @@ def replace_single_vocab_word(rejected_word, passage_text, target_year, current_
     if inc_example:
         prompt += ", example_sentence"
     if inc_related:
-        prompt += ", related_words"
-    if inc_etym:
-        prompt += ", etymology"
-
-    res = call_gemini_cascade(prompt)
-    if isinstance(res, list) and len(res) > 0:
-        return res[0]
-    return None
-
-
-# --- 3. LANDSCAPE A4 PDF GENERATOR ---
-def generate_vocab_pdf(vocab_data, text_title, target_year, inc_def, inc_example, inc_related, inc_etym, inc_dual_coding):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=15, leading=18, spaceAfter=2)
-    sub_style = ParagraphStyle('DocSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.HexColor("#555555"), spaceAfter=10)
-    cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
-    draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#777777"))
-
-    doc_label = f"Vocabulary Support Sheet: {text_title}" if text_title else "Vocabulary Support Sheet"
-    elements.append(Paragraph(doc_label, title_style))
-    elements.append(Paragraph(f"<b>Target Group:</b> {target_year}", sub_style))
-
-    rows = []
-    current_row = []
-    for item in vocab_data:
-        w_name = item.get('word', '')
-        w_class = item.get('word_class', '')
-
-        cell_text = f"<b><font size=10 color='#111111'>{w_name}</font></b> <i>({w_class})</i><br/>"
-        
-        if inc_def and item.get('definition'):
-            cell_text += f"<b>Definition:</b> {item.get('definition')}<br/>"
-        if inc_example and item.get('example_sentence'):
-            cell_text += f"<b>Example:</b> <i>\"{item.get('example_sentence')}\"</i><br/>"
-        if inc_related and item
+        prompt +=
