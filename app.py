@@ -29,7 +29,7 @@ def call_gemini_cascade(prompt):
     last_err = ""
 
     for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + clean_key
         headers = {"Content-Type": "application/json"}
         
         for attempt in range(2):
@@ -42,13 +42,13 @@ def call_gemini_cascade(prompt):
                     time.sleep(1)
                     continue
                 else:
-                    last_err = f"HTTP {res.status_code} ({res.text})"
+                    last_err = "HTTP " + str(res.status_code) + " (" + res.text + ")"
                     break
             except Exception as e:
                 last_err = str(e)
                 break
 
-    raise Exception(f"API Request Failed: {last_err}")
+    raise Exception("API Request Failed: " + last_err)
 
 
 # --- 2. VOCABULARY EXTRACTOR PROMPT ENGINE ---
@@ -65,12 +65,7 @@ def extract_vocabulary_support(passage_text, target_year, word_count, inc_def, i
 
     keys_str = ", ".join(req_keys)
 
-    prompt = (
-        f"Act as an expert UK Secondary English teacher. Analyse the provided source text and extract up to {word_count} "
-        f"key Tier 2 vocabulary words suitable for {target_year} pupils. Use UK English spelling strictly throughout.\n\n"
-        f"Source Text:\n'{passage_text}'\n\n"
-        f"Return a JSON array where each object strictly contains these keys: {keys_str}."
-    )
+    prompt = "Act as an expert UK Secondary English teacher. Analyse the provided source text and extract up to " + str(word_count) + " key Tier 2 vocabulary words suitable for " + str(target_year) + " pupils. Use UK English spelling strictly throughout.\n\nSource Text:\n'" + passage_text + "'\n\nReturn a JSON array where each object strictly contains these keys: " + keys_str + "."
     return call_gemini_cascade(prompt)
 
 
@@ -87,4 +82,26 @@ def generate_vocab_pdf(vocab_data, target_year, inc_def, inc_example, inc_relate
     cell_body = ParagraphStyle('CellBody', parent=styles['Normal'], fontSize=8, leading=10)
     draw_label = ParagraphStyle('DrawLabel', parent=styles['Normal'], fontSize=7, leading=8, textColor=colors.HexColor("#888888"))
 
-    elements.append(Paragraph("Vocabulary
+    elements.append(Paragraph("Vocabulary Support Sheet", title_style))
+    elements.append(Paragraph("<b>Target Group:</b> " + str(target_year), sub_style))
+
+    # Build Header Row
+    headers = [Paragraph("<b>Word & Class</b>", cell_head)]
+    if inc_def:
+        headers.append(Paragraph("<b>Definition</b>", cell_head))
+    if inc_example:
+        headers.append(Paragraph("<b>Example Sentence</b>", cell_head))
+    if inc_related:
+        headers.append(Paragraph("<b>Related Words</b>", cell_head))
+    if inc_etym:
+        headers.append(Paragraph("<b>Etymology</b>", cell_head))
+    if inc_dual_coding:
+        headers.append(Paragraph("<b>Dual Coding</b>", cell_head))
+
+    table_data = [headers]
+
+    # Build Data Rows
+    for item in vocab_data:
+        w_name = str(item.get('word', ''))
+        w_class = str(item.get('word_class', ''))
+        row = [Paragraph("<b><font size=9>" + w_name + "</font></b><br/><i>(" + w_class + ")</i>", cell_body
